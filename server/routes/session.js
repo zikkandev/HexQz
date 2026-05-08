@@ -331,9 +331,17 @@ router.get('/session/:sessionId/export', (req, res) => {
     for (const q of questions) {
       const resp = db.prepare('SELECT * FROM response WHERE participant_id = ? AND question_id = ?').get(p.id, q.id);
       if (resp) {
-        const answerText = resp.answer_id
-          ? db.prepare('SELECT text FROM answer WHERE id = ?').get(resp.answer_id)?.text || ''
-          : resp.text_answer || '';
+        let answerText;
+        if (resp.answer_id) {
+          answerText = db.prepare('SELECT text FROM answer WHERE id = ?').get(resp.answer_id)?.text || '';
+        } else if (resp.text_answer) {
+          // Check if text_answer contains comma-separated answer IDs (multiple_choice)
+          const ids = resp.text_answer.split(',');
+          const texts = ids.map(id => db.prepare('SELECT text FROM answer WHERE id = ?').get(id)?.text).filter(Boolean);
+          answerText = texts.length === ids.length ? texts.join(', ') : resp.text_answer;
+        } else {
+          answerText = '';
+        }
         csv += `,"${resp.is_correct ? '✓' : '✗'} ${answerText.replace(/"/g, '""')}"`;
       } else {
         csv += ',""';

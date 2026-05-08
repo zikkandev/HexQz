@@ -189,8 +189,12 @@ router.post('/answer', (req, res) => {
   }
 
   // Save or update response
-  const storedAnswerId = Array.isArray(answerId) ? answerId.join(',') : (answerId || null);
-  const storedTextAnswer = typeof textAnswer === 'object' ? JSON.stringify(textAnswer) : (textAnswer || null);
+  // For multiple_choice, store comma-separated IDs in text_answer (answer_id has FK constraint)
+  const isMultipleChoice = question.type === 'multiple_choice';
+  const storedAnswerId = isMultipleChoice ? null : (Array.isArray(answerId) ? answerId[0] : (answerId || null));
+  const storedTextAnswer = isMultipleChoice && Array.isArray(answerId)
+    ? answerId.join(',')
+    : (typeof textAnswer === 'object' ? JSON.stringify(textAnswer) : (textAnswer || null));
 
   if (existing) {
     // Revision: update existing response and adjust score
@@ -266,8 +270,13 @@ router.get('/session/:sessionId/question/:questionId/responses', (req, res) => {
   res.json(responses.map(r => {
     let answerText = null;
     if (r.answer_id) {
-      // Could be comma-separated (multiple_choice)
-      answerText = r.answer_id.split(',').map(id => answerMap[id] || id).join(', ');
+      answerText = answerMap[r.answer_id] || r.answer_id;
+    } else if (r.text_answer && r.text_answer.includes(',')) {
+      // multiple_choice: comma-separated answer IDs stored in text_answer
+      const ids = r.text_answer.split(',');
+      if (ids.every(id => answerMap[id])) {
+        answerText = ids.map(id => answerMap[id]).join(', ');
+      }
     }
     return {
       id: r.id,

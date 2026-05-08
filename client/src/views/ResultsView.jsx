@@ -42,7 +42,7 @@ export default function ResultsView() {
         </div>
       )}
 
-      <Scoreboard scores={results.scores} />
+      <Scoreboard scores={results.scores} breakdown={results.breakdown} />
 
       <div className="mt-8 text-center">
         <a href="/" className="text-accent hover:underline">Play again</a>

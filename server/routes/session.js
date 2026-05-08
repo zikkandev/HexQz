@@ -277,12 +277,37 @@ router.get('/session/:sessionId/results', (req, res) => {
 
   const scores = getSessionScores(session.id);
   const quiz = db.prepare('SELECT * FROM quiz WHERE id = ?').get(session.quiz_id);
+  const questions = db.prepare('SELECT * FROM question WHERE quiz_id = ? ORDER BY sort_order').all(session.quiz_id);
+  const participants = db.prepare('SELECT * FROM participant WHERE session_id = ? ORDER BY score DESC').all(session.id);
+
+  // Build per-player question breakdown
+  const breakdown = {};
+  for (const p of participants) {
+    breakdown[p.display_name] = questions.map(q => {
+      const resp = db.prepare('SELECT * FROM response WHERE participant_id = ? AND question_id = ?').get(p.id, q.id);
+      if (!resp) return { question: q.text, answer: null, correct: false, points: 0 };
+
+      let answerText = null;
+      if (resp.answer_id) {
+        answerText = db.prepare('SELECT text FROM answer WHERE id = ?').get(resp.answer_id)?.text || null;
+      } else if (resp.text_answer) {
+        // Check for comma-separated answer IDs (multiple_choice)
+        const ids = resp.text_answer.split(',');
+        const texts = ids.map(id => db.prepare('SELECT text FROM answer WHERE id = ?').get(id)?.text).filter(Boolean);
+        answerText = texts.length === ids.length && texts.length > 0 ? texts.join(', ') : resp.text_answer;
+      }
+
+      return { question: q.text, answer: answerText, correct: !!resp.is_correct, points: resp.points_awarded || 0 };
+    });
+  }
 
   res.json({
     quizTitle: quiz.title,
     status: session.status,
     scores,
+    breakdown,
     themeColor: quiz.theme_color,
+    lightMode: !!quiz.light_mode,
     logoUrl: quiz.logo_url
   });
 });

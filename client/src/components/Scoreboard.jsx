@@ -61,7 +61,9 @@ function PlayerRow({ player, rank, medals, details }) {
             <div key={i} className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm ${
               d.answer === null ? 'bg-gray-500/10 text-text-secondary' : d.correct ? 'bg-green-500/10' : 'bg-red-500/10'
             }`}>
-              <span className="w-5 text-center shrink-0">
+              <span className={`w-5 text-center shrink-0 font-bold ${
+                d.answer === null ? 'text-text-secondary' : d.correct ? 'text-green-400' : 'text-red-400'
+              }`}>
                 {d.answer === null ? '–' : d.correct ? '✓' : '✗'}
               </span>
               <span className="flex-1 truncate" title={d.question}>

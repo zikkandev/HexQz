@@ -43,6 +43,11 @@ app.use('/api/admin/login', loginLimiter);
 app.use('/api/join', joinLimiter);
 app.use('/api/answer', answerLimiter);
 
+// Version endpoint
+app.get('/api/version', (req, res) => {
+  res.json({ hash: process.env.BUILD_HASH || 'dev' });
+});
+
 // API routes
 app.use('/api', adminRoutes);
 app.use('/api', sessionRoutes);

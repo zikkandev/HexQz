@@ -218,12 +218,12 @@ export default function HostView() {
         </nav>
         <h1 className="text-3xl font-bold mb-8">Waiting for players...</h1>
         <div className="mb-4">
-          <QRCodeSVG value={joinUrl} size={250} bgColor="transparent" fgColor="white" />
+          <QRCodeSVG value={joinCodeDisplay ? `${joinUrl}?code=${joinCodeDisplay}` : joinUrl} size={250} bgColor="transparent" fgColor="white" />
         </div>
         {joinCodeDisplay && (
           <p className="text-4xl font-mono font-bold tracking-widest mb-4">{joinCodeDisplay}</p>
         )}
-        <p className="text-gray-400 mb-2">Go to <span className="text-white font-mono">{joinUrl}</span></p>
+        <p className="text-gray-400 mb-2">Scan QR or enter code at <span className="text-white font-mono">{joinUrl}</span></p>
         <p className="text-gray-400 mb-8">{participants.length} player{participants.length !== 1 ? 's' : ''} joined</p>
         <div className="flex flex-wrap gap-2 mb-8 justify-center">
           {participants.map(p => (

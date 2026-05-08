@@ -8,6 +8,8 @@ RUN npm run build
 
 # Stage 2: run server + serve built client
 FROM node:20-alpine
+ARG BUILD_HASH=dev
+ENV BUILD_HASH=$BUILD_HASH
 WORKDIR /app
 COPY server/package.json ./
 RUN npm install --omit=dev

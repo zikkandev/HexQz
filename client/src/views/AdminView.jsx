@@ -120,60 +120,33 @@ export default function AdminView() {
 
       {/* Theme Picker */}
       <div className="mb-6 p-4 bg-gray-800 rounded-lg border border-gray-700">
-        <h3 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wide">Theme</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-          {THEMES.map(t => (
-            <button
-              key={t.id}
-              onClick={() => updateTheme(t.id)}
-              className={`relative rounded-lg overflow-hidden border-2 transition-all ${quiz.themeColor === t.id ? 'border-white ring-2 ring-white/30 scale-[1.02]' : 'border-gray-600 hover:border-gray-400'}`}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-1">
+            <div className="w-4 h-4 rounded-full shrink-0" style={{ background: THEMES.find(t => t.id === quiz.themeColor)?.accent || quiz.themeColor || '#6366f1' }} />
+            <select
+              value={THEMES.find(t => t.id === quiz.themeColor) ? quiz.themeColor : '__custom'}
+              onChange={(e) => { if (e.target.value !== '__custom') updateTheme(e.target.value); }}
+              className="flex-1 px-3 py-2 bg-gray-700 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent"
             >
-              {/* Mini preview */}
-              <div className="p-2 h-24" style={{ background: t.bg }}>
-                <div className="text-[9px] font-bold mb-1 truncate" style={{ color: t.text }}>{t.label}</div>
-                <div className="rounded px-1.5 py-0.5 mb-1 text-[8px]" style={{ background: t.card, border: `1px solid ${t.accent}40`, color: t.text }}>
-                  Sample Q?
-                </div>
-                <div className="flex gap-1">
-                  <div className="flex-1 rounded py-0.5 text-[7px] text-center" style={{ background: t.accent, color: '#fff' }}>A</div>
-                  <div className="flex-1 rounded py-0.5 text-[7px] text-center" style={{ border: `1px solid ${t.accent}`, color: t.text }}>B</div>
-                </div>
-              </div>
-              {/* Label */}
-              <div className="px-2 py-1.5 bg-gray-900 text-center">
-                <span className="text-xs font-medium text-gray-200">{t.label}</span>
-                <span className="block text-[10px] text-gray-500">{t.desc}</span>
-              </div>
-              {/* Selected check */}
-              {quiz.themeColor === t.id && (
-                <div className="absolute top-1 right-1 w-5 h-5 bg-white rounded-full flex items-center justify-center">
-                  <span className="text-xs text-gray-900">✓</span>
-                </div>
-              )}
-            </button>
-          ))}
-        </div>
-        {/* Custom color option */}
-        <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-700">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="color"
-              value={quiz.themeColor?.startsWith('#') ? quiz.themeColor : '#6366f1'}
-              onChange={(e) => updateTheme(e.target.value)}
-              className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent"
-            />
-            <span className="text-sm text-gray-400">Custom accent color</span>
-          </label>
-          {quiz.themeColor?.startsWith('#') && (
-            <span className="text-xs text-gray-500 font-mono">{quiz.themeColor}</span>
+              {THEMES.map(t => <option key={t.id} value={t.id}>{t.label} — {t.desc}</option>)}
+              <option value="__custom">Custom color</option>
+            </select>
+          </div>
+          {(!THEMES.find(t => t.id === quiz.themeColor) || quiz.themeColor?.startsWith('#')) && (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="color"
+                value={quiz.themeColor?.startsWith('#') ? quiz.themeColor : '#6366f1'}
+                onChange={(e) => updateTheme(e.target.value)}
+                className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent"
+              />
+            </label>
           )}
-          {/* Dark/Light toggle */}
           <button
             onClick={toggleLightMode}
-            className={`ml-auto flex items-center gap-2 px-4 py-2 rounded-lg border transition ${quiz.lightMode ? 'bg-yellow-50 border-yellow-300 text-yellow-800' : 'bg-gray-700 border-gray-600 text-gray-300'}`}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition text-sm ${quiz.lightMode ? 'bg-yellow-50 border-yellow-300 text-yellow-800' : 'bg-gray-700 border-gray-600 text-gray-300'}`}
           >
-            <span className="text-lg">{quiz.lightMode ? '☀️' : '🌙'}</span>
-            <span className="text-sm font-medium">{quiz.lightMode ? 'Light' : 'Dark'}</span>
+            {quiz.lightMode ? '☀️ Light' : '🌙 Dark'}
           </button>
         </div>
       </div>

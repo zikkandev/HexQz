@@ -1,6 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+function VersionFooter() {
+  const [version, setVersion] = useState(null);
+  useEffect(() => { fetch('/api/version').then(r => r.json()).then(setVersion).catch(() => {}); }, []);
+  if (!version) return null;
+  const short = version.hash?.length > 8 ? version.hash.slice(0, 7) : version.hash;
+  return <p className="fixed bottom-2 right-3 text-xs text-gray-600 font-mono select-all">{short}</p>;
+}
+
 export default function AdminDashboardView() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [password, setPassword] = useState('');
@@ -101,6 +109,8 @@ export default function AdminDashboardView() {
           Create
         </button>
       </form>
+
+      <VersionFooter />
 
       {quizzes.length === 0 ? (
         <p className="text-gray-500">No quizzes yet. Create one above.</p>

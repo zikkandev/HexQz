@@ -133,8 +133,11 @@ export default function HostView() {
   };
 
   const nextQuestion = async () => {
-    if (answerCount.total > 0 && answerCount.count < answerCount.total) {
-      const names = answerCount.waiting.length > 0 ? answerCount.waiting.join(', ') : `${answerCount.total - answerCount.count} player(s)`;
+    const total = answerCount.total || participants.length;
+    if (total > 0 && answerCount.count < total) {
+      const names = answerCount.waiting.length > 0
+        ? answerCount.waiting.join(', ')
+        : `${total - answerCount.count} player(s)`;
       if (!confirm(`Still waiting for: ${names}\n\nContinue anyway?`)) {
         return;
       }

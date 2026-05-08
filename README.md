@@ -5,15 +5,17 @@ Real-time quiz platform. Create quizzes, control the pace, players join via QR c
 ## Features
 
 - **Admin-paced** — host controls when to advance questions
-- **QR code join** — participants scan and play on their phones
-- **Multiple question types** — single/multiple choice, true/false, free text, numeric, estimation
+- **QR code join** — participants scan QR and go straight to name entry (no manual code needed)
+- **Multiple question types** — single/multiple choice, true/false, free text, numeric, estimation, multi-part
 - **Team support** — optional team names for group play
 - **Live scoreboard** — scores update after each question
+- **Expandable results** — tap any player on the results page to see their answers per question (correct/wrong/points)
 - **Self-healing connections** — survives WiFi drops, backgrounded tabs, network switches
-- **Themed quizzes** — 10 preset themes (Synthwave, Star Trek, Emerald, etc.) with dark/light mode
+- **Themed quizzes** — 10 preset themes with dark/light mode, or custom accent color
 - **Per-quiz branding** — custom colors and logos per quiz
 - **Session history** — view past results, export as CSV
 - **Multi-quiz** — run multiple quizzes simultaneously
+- **Version tracking** — build hash shown in admin dashboard footer for easy deploy verification
 
 ## Quick Start
 
@@ -100,6 +102,27 @@ To update: `git pull && docker compose up -d --build` in the stack directory.
 | `ADMIN_SECRET` | — | Master password for `/admin` dashboard. Dashboard disabled if unset. |
 | `PLATFORM_NAME` | `hexqz` | Shown on landing page when no quiz is active |
 | `PLATFORM_LOGO_URL` | — | Platform logo URL |
+| `DB_PATH` | `data/hexqz.sqlite` | SQLite database file path |
+
+## Question Types
+
+| Type | Description |
+|---|---|
+| Single Choice | Tap one answer (A/B/C/D). +10 if correct. |
+| Multiple Choice | Select multiple answers + submit. +10 if all correct selected. |
+| True / False | Two buttons. +10 if correct. |
+| Free Text | Text input, auto-matched case-insensitively against accepted answers. |
+| Numeric | Number input, correct if within ±tolerance. |
+| Estimation | Number input, ranked by proximity to correct value. Top scores by closeness. |
+| Multi-Part | Multiple fields (e.g. Artist + Song), scored per part. |
+
+## Updating
+
+When a commit is pushed to `main`, GitHub Actions builds a multi-arch Docker image (amd64 + arm64) and pushes it to `ghcr.io/hex29a/hexqz:latest`.
+
+- **Dockge (image mode)**: Click the **Update** button to pull the latest image, then restart.
+- **Docker CLI**: `docker compose pull && docker compose up -d`
+- **Verify**: After updating, check the admin dashboard (`/admin`) — the build hash is shown in the bottom-right corner. It should match the latest commit on GitHub.
 
 ## Development
 

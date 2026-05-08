@@ -134,8 +134,8 @@ export default function HostView() {
 
   const nextQuestion = async () => {
     if (answerCount.total > 0 && answerCount.count < answerCount.total) {
-      const remaining = answerCount.total - answerCount.count;
-      if (!confirm(`${remaining} player${remaining > 1 ? 's' : ''} haven't answered yet. Continue anyway?`)) {
+      const names = answerCount.waiting.length > 0 ? answerCount.waiting.join(', ') : `${answerCount.total - answerCount.count} player(s)`;
+      if (!confirm(`Still waiting for: ${names}\n\nContinue anyway?`)) {
         return;
       }
     }

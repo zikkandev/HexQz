@@ -300,6 +300,17 @@ router.delete('/quiz/:adminToken/question/:questionId', (req, res) => {
 // --- Image Upload ---
 
 router.post('/upload', (req, res) => {
+  // Require admin auth
+  const secret = process.env.ADMIN_SECRET;
+  const hasValidCookie = secret && req.cookies.admin_session === secret;
+  const hasValidHeader = secret && req.headers['x-admin-secret'] === secret;
+  if (secret && !hasValidCookie && !hasValidHeader) {
+    // Also allow quiz admin tokens
+    const adminToken = req.headers['x-admin-token'];
+    const quiz = adminToken ? db.prepare('SELECT id FROM quiz WHERE admin_token = ?').get(adminToken) : null;
+    if (!quiz) return res.status(401).json({ error: 'Unauthorized' });
+  }
+
   upload.single('image')(req, res, (err) => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') {

@@ -4,15 +4,21 @@ Real-time quiz platform. Create quizzes, control the pace, players join via QR c
 
 ## Features
 
-- **Admin-paced** — host controls when to advance questions
+- **Admin-paced or Auto-mode** — host controls when to advance, or let the quiz run automatically
+- **Speed-based scoring** — points scale from 1000 (instant answer) to 0 (at time limit), rewarding faster responses
 - **QR code join** — participants scan QR and go straight to name entry (no manual code needed)
 - **Multiple question types** — single/multiple choice, true/false, free text, numeric, estimation, multi-part
 - **Team support** — optional team names for group play
-- **Live scoreboard** — scores update after each question
+- **Live scoreboard** — animated scoreboard between questions with round winner highlight and medals
+- **Display View** — dedicated projector/big-screen view at `/display/:sessionId` for showing questions and scores
+- **Get Ready countdown** — 5-second countdown before each question
+- **Timer bar** — visual countdown in player and display views
+- **Early close** — question closes immediately when all players have answered
 - **Expandable results** — tap any player on the results page to see their answers per question (correct/wrong/points)
 - **Self-healing connections** — survives WiFi drops, backgrounded tabs, network switches
 - **Themed quizzes** — 10 preset themes with dark/light mode, or custom accent color
 - **Per-quiz branding** — custom colors and logos per quiz
+- **Session naming** — optional name when creating sessions
 - **Session history** — view past results, export as CSV
 - **Multi-quiz** — run multiple quizzes simultaneously
 - **Version tracking** — build hash shown in admin dashboard footer for easy deploy verification
@@ -89,9 +95,13 @@ To update: `git pull && docker compose up -d --build` in the stack directory.
 2. Admin starts a session → gets a join code and QR code
 3. Participants scan QR or enter the 6-character code at the root URL
 4. They enter a display name (and optional team) → land in the lobby
-5. Admin clicks "Start" → first question appears on all phones
-6. Players answer → admin sees live answer count → clicks "Next"
-7. Scores update after each question → final scoreboard at the end
+5. Admin clicks "Start" → "Get Ready!" countdown appears for 5 seconds
+6. Question appears on all screens with a timer bar counting down
+7. Players answer → points awarded based on speed (faster = more points)
+8. After time expires (or all players answer), correct answer is revealed
+9. Round result shows the round winner, then the live scoreboard with medals
+10. Admin clicks "Continue" (or auto-mode advances automatically) → next question
+11. After the last question, the final results screen shows with winner animation
 
 ## Configuration
 
@@ -108,9 +118,9 @@ To update: `git pull && docker compose up -d --build` in the stack directory.
 
 | Type | Description |
 |---|---|
-| Single Choice | Tap one answer (A/B/C/D). +10 if correct. |
-| Multiple Choice | Select multiple answers + submit. +10 if all correct selected. |
-| True / False | Two buttons. +10 if correct. |
+| Single Choice | Tap one answer (A/B/C/D). Points based on speed. |
+| Multiple Choice | Select multiple answers + submit. Points based on speed if all correct. |
+| True / False | Two buttons. Points based on speed if correct. |
 | Free Text | Text input, auto-matched case-insensitively against accepted answers. |
 | Numeric | Number input, correct if within ±tolerance. |
 | Estimation | Number input, ranked by proximity to correct value. Top scores by closeness. |
@@ -131,6 +141,15 @@ make dev
 ```
 
 Runs server (with hot reload) and client (Vite dev server) in parallel.
+
+## Stress Testing
+
+A Docker-based stress testing tool is included in `stress-test/`. See [stress-test/README.md](stress-test/README.md) for details.
+
+```bash
+cd stress-test
+./run-test.sh 100  # Simulate 100 concurrent players
+```
 
 ## Tech Stack
 

@@ -4,11 +4,25 @@ import db from '../db/db.js';
 
 const router = Router();
 
-// In-memory tracking of closed questions
-const closedQuestions = new Map(); // questionId -> timestamp
+// In-memory tracking of closed questions (per session for cleanup)
+const closedQuestions = new Map(); // sessionId -> Set of questionIds
 const autoCloseTimeouts = new Map(); // sessionId -> timeoutId
 const phaseTransitionTimeouts = new Map(); // sessionId -> [timeoutId, ...]
 const getReadyTimeouts = new Map(); // sessionId -> timeoutId
+
+function markQuestionClosed(sessionId, questionId) {
+  if (!closedQuestions.has(sessionId)) closedQuestions.set(sessionId, new Set());
+  closedQuestions.get(sessionId).add(questionId);
+}
+
+function isQuestionClosed(sessionId, questionId) {
+  return closedQuestions.has(sessionId) && closedQuestions.get(sessionId).has(questionId);
+}
+
+function cleanupSession(sessionId) {
+  clearAllSessionTimeouts(sessionId);
+  closedQuestions.delete(sessionId);
+}
 
 function clearPhaseTimeouts(sessionId) {
   const timeouts = phaseTransitionTimeouts.get(sessionId);
@@ -109,6 +123,7 @@ router.post('/session/:sessionId/end', (req, res) => {
     WHERE session_id = ? ORDER BY score DESC
   `).all(session.id).map(p => ({ name: p.display_name, team: p.team_name, score: p.score }));
   io.to(`session:${session.id}`).emit('session:finished', { results: scores, resultsUrl: `/results/${session.id}` });
+  cleanupSession(session.id);
 
   res.json({ ok: true });
 });
@@ -232,7 +247,7 @@ router.post('/session/:sessionId/next', (req, res) => {
   let roundWinner = null;
   if (currentIndex < questions.length) {
     const currentQuestion = questions[currentIndex];
-    closedQuestions.set(currentQuestion.id, Date.now());
+    markQuestionClosed(session.id, currentQuestion.id);
 
     // Score estimation questions
     if (currentQuestion.type === 'estimation' && currentQuestion.correct_value !== null) {
@@ -355,6 +370,7 @@ router.post('/session/:sessionId/next', (req, res) => {
             results: finalScores,
             resultsUrl: `/results/${session.id}`
           });
+          cleanupSession(session.id);
         }, scoreboardPauseSeconds * 1000);
       }
     }, roundWinner ? 10000 : 0);
@@ -412,6 +428,7 @@ router.post('/session/:sessionId/continue', (req, res) => {
       results: finalScores,
       resultsUrl: `/results/${session.id}`
     });
+    cleanupSession(session.id);
     return res.json({ ok: true, message: 'Quiz finished' });
   }
   
@@ -489,6 +506,7 @@ router.post('/session/:sessionId/advance-phase', (req, res) => {
         results: finalScores,
         resultsUrl: `/results/${session.id}`
       });
+      cleanupSession(session.id);
       console.log(`[ADVANCE-PHASE] Last question done, finishing session ${session.id}`);
       return res.json({ ok: true, phase: 'finished' });
     }
@@ -837,12 +855,12 @@ function executeQuestionClose(io, sessionId, scoreboardPauseSeconds) {
     const currentQuestion = questions[currentIndex];
     
     // Check if already closed
-    if (closedQuestions.has(currentQuestion.id)) {
+    if (isQuestionClosed(sessionId, currentQuestion.id)) {
       console.log(`[EARLY-CLOSE] Question ${currentIndex + 1} already closed, skipping`);
       return;
     }
     
-    closedQuestions.set(currentQuestion.id, Date.now());
+    markQuestionClosed(sessionId, currentQuestion.id);
 
     if (currentQuestion.type === 'estimation' && currentQuestion.correct_value !== null) {
       scoreEstimationQuestion(currentQuestion);
@@ -936,6 +954,7 @@ function executeQuestionClose(io, sessionId, scoreboardPauseSeconds) {
               results: finalScores,
               resultsUrl: `/results/${sessionId}`
             });
+            cleanupSession(sessionId);
           }, scoreboardPauseSeconds * 1000);
         } else {
           // Not the last question - emit event to tell host to show continue button
@@ -1006,7 +1025,7 @@ function scheduleAutoAdvance(io, sessionId, answerTimeSeconds, scoreboardPauseSe
     let roundWinner = null;
     if (currentIndex < questions.length) {
       const currentQuestion = questions[currentIndex];
-      closedQuestions.set(currentQuestion.id, Date.now());
+      markQuestionClosed(sessionId, currentQuestion.id);
 
       if (currentQuestion.type === 'estimation' && currentQuestion.correct_value !== null) {
         scoreEstimationQuestion(currentQuestion);
@@ -1051,6 +1070,7 @@ function scheduleAutoAdvance(io, sessionId, answerTimeSeconds, scoreboardPauseSe
             results: finalScores,
             resultsUrl: `/results/${sessionId}`
           });
+          cleanupSession(sessionId);
         }, scoreboardPauseSeconds * 1000);
         return;
       }
@@ -1088,6 +1108,7 @@ function advanceToNextQuestion(io, sessionId, nextIndex, questions, quiz) {
     db.prepare('UPDATE session SET status = ?, current_phase = ? WHERE id = ?').run('finished', 'finished', sessionId);
     const finalScores = getSessionScores(sessionId);
     io.to(`session:${sessionId}`).emit('session:finished', { results: finalScores, resultsUrl: `/results/${sessionId}` });
+    cleanupSession(sessionId);
     return;
   }
   

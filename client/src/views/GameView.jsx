@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import socket from '../socket.js';
 import { applyTheme } from '../theme.js';
+import Scoreboard from '../components/Scoreboard.jsx';
 
 const POLL_INTERVAL = 8000;
 
@@ -10,6 +11,7 @@ export default function GameView() {
   const navigate = useNavigate();
   const participantId = localStorage.getItem(`participant:${sessionId}`);
 
+  const [phase, setPhase] = useState('waiting'); // 'waiting', 'getReady', 'question', 'roundResult', 'scoreboard', 'finished'
   const [question, setQuestion] = useState(null);
   const [answers, setAnswers] = useState([]);
   const [questionIndex, setQuestionIndex] = useState(0);
@@ -20,9 +22,19 @@ export default function GameView() {
   const [multiPartAnswers, setMultiPartAnswers] = useState({});
   const [error, setError] = useState('');
   const [liveCount, setLiveCount] = useState({ count: 0, total: 0 });
+  const [scores, setScores] = useState([]);
+  const [timeRemaining, setTimeRemaining] = useState(null);
+  const [answerTimeSeconds, setAnswerTimeSeconds] = useState(30);
+  const [questionStartedAt, setQuestionStartedAt] = useState(null);
+  const [roundWinner, setRoundWinner] = useState(null);
+  const [questionWinner, setQuestionWinner] = useState(null);
+  const [getReadyCountdown, setGetReadyCountdown] = useState(null);
+  const [correctAnswers, setCorrectAnswers] = useState([]);
+  const [correctAnswerQuestion, setCorrectAnswerQuestion] = useState(null);
 
   const questionIndexRef = useRef(0);
   const pollTimer = useRef(null);
+  const timerInterval = useRef(null);
 
   const applyState = useCallback((data) => {
     if (data.themeColor) applyTheme(data.themeColor, data.lightMode);
@@ -32,6 +44,12 @@ export default function GameView() {
     }
     if (data.status === 'waiting') {
       navigate(`/lobby/${sessionId}`);
+      return;
+    }
+    if (data.currentPhase === 'get_ready') {
+      setPhase('getReady');
+      setGetReadyCountdown(5);
+      if (data.totalQuestions) setTotalQuestions(data.totalQuestions);
       return;
     }
     if (data.questionIndex !== undefined && data.questionIndex > questionIndexRef.current) {
@@ -45,16 +63,59 @@ export default function GameView() {
       setMultiPartAnswers({});
       setError('');
       setLiveCount({ count: 0, total: 0 });
+      setPhase('question');
       questionIndexRef.current = data.questionIndex;
+      
+      if (data.questionStartedAt) {
+        setQuestionStartedAt(data.questionStartedAt);
+      }
+      if (data.answerTimeSeconds) {
+        setAnswerTimeSeconds(data.answerTimeSeconds);
+      }
     } else if (data.question && questionIndexRef.current === 0 && !question) {
       // First question
       setQuestion(data.question);
       setAnswers(data.answers || []);
       setQuestionIndex(data.questionIndex);
       setTotalQuestions(data.totalQuestions);
+      setPhase('question');
       questionIndexRef.current = data.questionIndex;
+      
+      if (data.questionStartedAt) {
+        setQuestionStartedAt(data.questionStartedAt);
+      }
+      if (data.answerTimeSeconds) {
+        setAnswerTimeSeconds(data.answerTimeSeconds);
+      }
     }
   }, [navigate, sessionId, question]);
+
+  // Timer effect
+  useEffect(() => {
+    if (phase === 'question' && questionStartedAt && answerTimeSeconds) {
+      if (timerInterval.current) clearInterval(timerInterval.current);
+      
+      timerInterval.current = setInterval(() => {
+        const now = Date.now();
+        const startTime = questionStartedAt * 1000;
+        const elapsed = (now - startTime) / 1000;
+        const remaining = Math.max(0, answerTimeSeconds - elapsed);
+        
+        setTimeRemaining(remaining);
+        
+        if (remaining <= 0) {
+          clearInterval(timerInterval.current);
+        }
+      }, 100);
+      
+      return () => {
+        if (timerInterval.current) clearInterval(timerInterval.current);
+      };
+    } else {
+      setTimeRemaining(null);
+      if (timerInterval.current) clearInterval(timerInterval.current);
+    }
+  }, [phase, questionStartedAt, answerTimeSeconds]);
 
   useEffect(() => {
     if (!participantId) {
@@ -80,7 +141,15 @@ export default function GameView() {
       setMultiPartAnswers({});
       setError('');
       setLiveCount({ count: 0, total: 0 });
+      setPhase('question');
       questionIndexRef.current = data.questionIndex;
+      
+      if (data.questionStartedAt) {
+        setQuestionStartedAt(data.questionStartedAt);
+      }
+      if (data.answerTimeSeconds) {
+        setAnswerTimeSeconds(data.answerTimeSeconds);
+      }
     });
 
     socket.on('session:started', (data) => {
@@ -88,7 +157,37 @@ export default function GameView() {
       setAnswers(data.answers || []);
       setQuestionIndex(data.questionIndex);
       setTotalQuestions(data.totalQuestions);
+      setPhase('question');
       questionIndexRef.current = data.questionIndex;
+      
+      if (data.questionStartedAt) {
+        setQuestionStartedAt(data.questionStartedAt);
+      }
+      if (data.answerTimeSeconds) {
+        setAnswerTimeSeconds(data.answerTimeSeconds);
+      }
+    });
+
+    socket.on('session:scores', (data) => {
+      setScores(data.scores || []);
+      setQuestionWinner(data.roundWinner || null);
+      setPhase('scoreboard');
+    });
+
+    socket.on('session:round_result', (data) => {
+      setRoundWinner(data.winner);
+      setPhase('roundResult');
+    });
+
+    socket.on('session:correct_answer', (data) => {
+      setCorrectAnswerQuestion(data.question);
+      setCorrectAnswers(data.correctAnswers || []);
+      setPhase('correctAnswer');
+    });
+
+    socket.on('session:get_ready', (data) => {
+      setPhase('getReady');
+      setGetReadyCountdown(data.countdown || 5);
     });
 
     socket.on('session:state', applyState);
@@ -115,9 +214,25 @@ export default function GameView() {
       socket.off('session:state');
       socket.off('session:finished');
       socket.off('session:answer_count');
+      socket.off('session:scores');
+      socket.off('session:correct_answer');
+      socket.off('session:round_result');
+      socket.off('session:get_ready');
       clearInterval(pollTimer.current);
+      if (timerInterval.current) clearInterval(timerInterval.current);
     };
   }, [sessionId, participantId, navigate, applyState]);
+
+  // Timer effect for Get Ready countdown
+  useEffect(() => {
+    if (phase === 'getReady' && getReadyCountdown !== null && getReadyCountdown > 0) {
+      const timeout = setTimeout(() => {
+        setGetReadyCountdown(prev => Math.max(0, prev - 1));
+      }, 1000);
+      
+      return () => clearTimeout(timeout);
+    }
+  }, [phase, getReadyCountdown]);
 
   const submitAnswer = async () => {
     const body = { participantId, questionId: question.id };
@@ -127,7 +242,7 @@ export default function GameView() {
       body.answerId = selectedAnswer;
     } else if (question.type === 'multiple_choice') {
       if (!selectedAnswer || selectedAnswer.length === 0) return;
-      body.answerId = selectedAnswer; // array
+      body.answerId = selectedAnswer;
     } else if (question.type === 'multi_part') {
       const hasAnyAnswer = Object.values(multiPartAnswers).some(v => v.trim());
       if (!hasAnyAnswer) return;
@@ -156,7 +271,125 @@ export default function GameView() {
 
   const answerLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
 
-  if (!question) {
+  // Get Ready phase
+  if (phase === 'getReady') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen p-4">
+        <h1 className="text-5xl font-bold mb-8 text-center animate-pulse">Get Ready!</h1>
+        {getReadyCountdown !== null && getReadyCountdown > 0 && (
+          <div className="w-32 h-32 rounded-full border-8 border-accent bg-accent/10 flex items-center justify-center animate-pulse">
+            <span className="text-7xl font-bold text-accent">{getReadyCountdown}</span>
+          </div>
+        )}
+        {getReadyCountdown === 0 && (
+          <div className="text-5xl font-bold text-green-400 animate-bounce">GO!</div>
+        )}
+      </div>
+    );
+  }
+
+  // Correct Answer Reveal phase
+  if (phase === 'correctAnswer' && correctAnswerQuestion) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen p-4">
+        <div className="text-6xl mb-4 animate-pulse">✅</div>
+        <h1 className="text-3xl font-bold mb-6 text-center text-green-400">Correct Answer!</h1>
+        
+        <div className="bg-bg-card border-2 border-green-500 rounded-xl p-6 shadow-xl w-full max-w-md">
+          <h2 className="text-lg font-semibold mb-4 text-center text-text-secondary">{correctAnswerQuestion.text}</h2>
+          
+          {correctAnswerQuestion.type === 'numeric' && (
+            <div className="text-center">
+              <p className="text-5xl font-bold text-green-400">{correctAnswerQuestion.correctValue}</p>
+            </div>
+          )}
+          
+          {(correctAnswerQuestion.type === 'single_choice' || correctAnswerQuestion.type === 'true_false' || correctAnswerQuestion.type === 'multiple_choice' || correctAnswerQuestion.type === 'free_text') && (
+            <div className="space-y-3">
+              {correctAnswers.map((answer, idx) => (
+                <div key={answer.id || idx} className="bg-green-500/20 border-2 border-green-500 rounded-lg p-4 text-center">
+                  <p className="text-2xl font-bold text-green-400">{answer.text}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {correctAnswerQuestion.type === 'multi_part' && (
+            <div className="space-y-3">
+              {correctAnswers.reduce((acc, answer) => {
+                const label = answer.partLabel || 'Answer';
+                if (!acc[label]) acc[label] = [];
+                acc[label].push(answer.text);
+                return acc;
+              }, {}) && Object.entries(correctAnswers.reduce((acc, answer) => {
+                const label = answer.partLabel || 'Answer';
+                if (!acc[label]) acc[label] = [];
+                acc[label].push(answer.text);
+                return acc;
+              }, {})).map(([label, texts]) => (
+                <div key={label} className="bg-green-500/20 border-2 border-green-500 rounded-lg p-4">
+                  <p className="text-sm font-semibold text-green-400 mb-1">{label}:</p>
+                  <p className="text-xl font-bold text-white">{texts.join(' / ')}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Round Result phase
+  if (phase === 'roundResult' && roundWinner) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen p-4">
+        <div className="text-6xl mb-4 animate-bounce">⚡</div>
+        <h1 className="text-4xl font-bold mb-3 text-center animate-pulse text-accent">Fastest Answer!</h1>
+        <div className="bg-bg-card border-2 border-accent rounded-xl p-6 mt-4 shadow-xl">
+          <h2 className="text-3xl font-bold mb-2 text-center">{roundWinner.name}</h2>
+          {roundWinner.team && (
+            <p className="text-xl text-text-secondary text-center mb-4">{roundWinner.team}</p>
+          )}
+          <div className="flex items-center justify-center gap-4 mt-4">
+            <div className="text-center">
+              <p className="text-sm text-text-secondary">Time</p>
+              <p className="text-2xl font-bold text-accent">{(roundWinner.timeMs / 1000).toFixed(2)}s</p>
+            </div>
+            <div className="text-4xl text-text-secondary">•</div>
+            <div className="text-center">
+              <p className="text-sm text-text-secondary">Points</p>
+              <p className="text-2xl font-bold text-green-400">+{roundWinner.points}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Scoreboard phase
+  if (phase === 'scoreboard') {
+    return (
+      <div className="flex flex-col min-h-screen p-4 justify-center">
+        {questionWinner && (
+          <div className="mb-4 text-center">
+            <div className="inline-block bg-accent/20 border-2 border-accent rounded-lg px-6 py-3">
+              <p className="text-sm text-text-secondary mb-1">🏆 Question Champion</p>
+              <h3 className="text-2xl font-bold text-accent">{questionWinner.name}</h3>
+              {questionWinner.team && (
+                <p className="text-sm text-text-secondary">{questionWinner.team}</p>
+              )}
+              <p className="text-xl font-bold text-green-400 mt-1">+{questionWinner.points} points</p>
+            </div>
+          </div>
+        )}
+        <h2 className="text-2xl font-bold text-center mb-6">Scoreboard</h2>
+        <Scoreboard scores={scores} maxVisible={10} />
+        <p className="text-center text-text-secondary mt-6 text-sm">Next question coming up...</p>
+      </div>
+    );
+  }
+
+  if (!question || phase === 'waiting') {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-pulse text-xl">Waiting for question...</div>
@@ -168,14 +401,38 @@ export default function GameView() {
   const isTextType = ['free_text', 'numeric', 'estimation'].includes(question.type);
   const isMultiPart = question.type === 'multi_part';
 
-  // Extract part labels from answers (answers carry part_label info via the question's answers)
   const partLabels = isMultiPart ? [...new Set(answers.map(a => a.partLabel).filter(Boolean))] : [];
+
+  // Calculate timer percentage for visual feedback
+  const timerPercentage = timeRemaining !== null && answerTimeSeconds > 0 
+    ? (timeRemaining / answerTimeSeconds) * 100 
+    : 100;
+  
+  const timerColor = timerPercentage > 50 ? 'bg-green-500' : timerPercentage > 20 ? 'bg-yellow-500' : 'bg-red-500';
 
   return (
     <div className="flex flex-col min-h-screen p-4">
-      <div className="text-center mb-4">
+      <div className="text-center mb-2">
         <span className="text-text-secondary text-sm">Question {questionIndex + 1} of {totalQuestions}</span>
       </div>
+
+      {/* Timer Bar */}
+      {timeRemaining !== null && (
+        <div className="mb-4">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-xs text-text-secondary">Time remaining</span>
+            <span className={`text-sm font-bold ${timerPercentage <= 10 ? 'text-red-500 animate-pulse' : ''}`}>
+              {Math.ceil(timeRemaining)}s
+            </span>
+          </div>
+          <div className="w-full h-2 bg-bg-card rounded-full overflow-hidden">
+            <div 
+              className={`h-full ${timerColor} transition-all duration-300 ease-linear`}
+              style={{ width: `${timerPercentage}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 flex flex-col justify-center">
         <h2 className="text-xl font-bold text-center mb-2">{question.text}</h2>
@@ -183,7 +440,7 @@ export default function GameView() {
 
         {submitted ? (
           <div className="text-center py-8">
-            <div className="text-4xl mb-2">&#10003;</div>
+            <div className="text-4xl mb-2">✓</div>
             <p className="text-lg text-text-secondary mb-2">Answer received!</p>
             {liveCount.total > 0 && (
               <p className="text-sm text-text-secondary mb-4">{liveCount.count}/{liveCount.total} answered</p>
@@ -266,13 +523,14 @@ export default function GameView() {
             <button
               onClick={submitAnswer}
               disabled={
-                isChoiceType ? !selectedAnswer :
+                (timeRemaining !== null && timeRemaining <= 0) ||
+                (isChoiceType ? !selectedAnswer :
                 isMultiPart ? !Object.values(multiPartAnswers).some(v => v.trim()) :
-                !textAnswer.trim()
+                !textAnswer.trim())
               }
               className="w-full mt-4 py-4 bg-accent hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-semibold text-lg transition"
             >
-              Submit
+              {timeRemaining !== null && timeRemaining <= 0 ? 'Time\'s Up!' : 'Submit'}
             </button>
           </>
         )}

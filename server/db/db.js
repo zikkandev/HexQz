@@ -19,5 +19,11 @@ db.exec(schema);
 // Add columns if missing (safe migrations)
 try { db.exec('ALTER TABLE quiz ADD COLUMN archived INTEGER DEFAULT 0'); } catch {}
 try { db.exec('ALTER TABLE quiz ADD COLUMN light_mode INTEGER DEFAULT 0'); } catch {}
+try { db.exec('ALTER TABLE quiz ADD COLUMN answer_time_seconds INTEGER DEFAULT 30'); } catch {}
+try { db.exec('ALTER TABLE quiz ADD COLUMN scoreboard_pause_seconds INTEGER DEFAULT 10'); } catch {}
+try { db.exec('ALTER TABLE session ADD COLUMN auto_mode INTEGER DEFAULT 0'); } catch {}
+try { db.exec('ALTER TABLE session ADD COLUMN question_started_at INTEGER'); } catch {}
+try { db.exec('ALTER TABLE session ADD COLUMN current_phase TEXT DEFAULT \'waiting\''); } catch {}
+try { db.exec('ALTER TABLE response ADD COLUMN response_time_ms INTEGER'); } catch {}
 
 export default db;

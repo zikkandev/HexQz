@@ -26,6 +26,10 @@ export default function LobbyView() {
       setParticipantCount(prev => prev + 1);
     });
 
+    socket.on('session:get_ready', () => {
+      navigate(`/game/${sessionId}`);
+    });
+
     socket.on('session:started', () => {
       navigate(`/game/${sessionId}`);
     });
@@ -45,6 +49,7 @@ export default function LobbyView() {
 
     return () => {
       socket.off('session:participant_joined');
+      socket.off('session:get_ready');
       socket.off('session:started');
       socket.off('session:state');
     };

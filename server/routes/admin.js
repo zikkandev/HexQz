@@ -93,9 +93,12 @@ router.get('/admin/quizzes', (req, res) => {
 // --- Quiz CRUD ---
 
 router.post('/quiz', (req, res) => {
-  // Require admin session to create quizzes
+  // Require admin session (cookie) OR admin secret (header) to create quizzes
   const secret = process.env.ADMIN_SECRET;
-  if (secret && req.cookies.admin_session !== secret) {
+  const hasValidCookie = secret && req.cookies.admin_session === secret;
+  const hasValidHeader = secret && req.headers['x-admin-secret'] === secret;
+  
+  if (secret && !hasValidCookie && !hasValidHeader) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -157,13 +160,16 @@ router.put('/quiz/:adminToken', (req, res) => {
   const quiz = db.prepare('SELECT * FROM quiz WHERE admin_token = ?').get(req.params.adminToken);
   if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
 
-  const { title, themeColor, logoUrl, lightMode } = req.body;
+  const { title, themeColor, logoUrl, lightMode, answerTimeSeconds, scoreboardPauseSeconds } = req.body;
   if (!title || !title.trim()) return res.status(400).json({ error: 'Title is required' });
   if (title.trim().length > 200) return res.status(400).json({ error: 'Title too long (max 200)' });
 
+  const answerTime = answerTimeSeconds !== undefined ? Math.max(5, Math.min(300, parseInt(answerTimeSeconds) || 30)) : quiz.answer_time_seconds;
+  const scoreboardPause = scoreboardPauseSeconds !== undefined ? Math.max(3, Math.min(60, parseInt(scoreboardPauseSeconds) || 10)) : quiz.scoreboard_pause_seconds;
+
   db.prepare(`
-    UPDATE quiz SET title = ?, theme_color = ?, logo_url = ?, light_mode = ? WHERE id = ?
-  `).run(title.trim(), themeColor || '#6366f1', logoUrl || null, lightMode ? 1 : 0, quiz.id);
+    UPDATE quiz SET title = ?, theme_color = ?, logo_url = ?, light_mode = ?, answer_time_seconds = ?, scoreboard_pause_seconds = ? WHERE id = ?
+  `).run(title.trim(), themeColor || '#6366f1', logoUrl || null, lightMode ? 1 : 0, answerTime, scoreboardPause, quiz.id);
 
   res.json({ ok: true });
 });

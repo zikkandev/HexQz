@@ -67,6 +67,13 @@ router.get('/join/:joinCode', (req, res) => {
   });
 });
 
+// Check if a participant still exists (used by JoinView auto-resume)
+router.get('/session/:sessionId/participant/:participantId', (req, res) => {
+  const p = db.prepare('SELECT id FROM participant WHERE id = ? AND session_id = ?').get(req.params.participantId, req.params.sessionId);
+  if (!p) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
+});
+
 // Register participant
 router.post('/join/:joinCode/register', (req, res) => {
   const joinCode = req.params.joinCode.toUpperCase();

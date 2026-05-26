@@ -128,6 +128,14 @@ export default function DisplayView() {
       }
     });
 
+    socket.on('session:reset', () => {
+      setPhase('waiting');
+      setScores([]);
+      setQuestion(null);
+      setQuestionIndex(0);
+      setAnswerCount({ count: 0, total: 0 });
+    });
+
     socket.on('session:answer_count', (data) => {
       setAnswerCount({ count: data.count, total: data.total });
     });
@@ -172,6 +180,7 @@ export default function DisplayView() {
       socket.off('session:round_result');
       socket.off('session:scores');
       socket.off('session:finished');
+      socket.off('session:reset');
       socket.off('session:answer_count');
       socket.off('session:get_ready');
       socket.off('session:state');

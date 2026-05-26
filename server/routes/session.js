@@ -130,6 +130,52 @@ router.post('/session/:sessionId/end', (req, res) => {
   res.json({ ok: true });
 });
 
+// Reset a session — clears participants, responses, generates new join code
+router.post('/session/:sessionId/reset', (req, res) => {
+  const adminToken = req.headers['x-admin-token'];
+  if (!adminToken) return res.status(401).json({ error: 'Missing X-Admin-Token header' });
+
+  const session = verifyAdminToken(req.params.sessionId, adminToken);
+  if (!session) return res.status(403).json({ error: 'Forbidden' });
+
+  const io = req.app.get('io');
+
+  // Notify connected clients that session is being reset
+  io.to(`session:${session.id}`).emit('session:reset');
+
+  // Clear all timeouts
+  cleanupSession(session.id);
+
+  // Delete responses for all participants in this session
+  const participants = db.prepare('SELECT id FROM participant WHERE session_id = ?').all(session.id);
+  for (const p of participants) {
+    db.prepare('DELETE FROM response WHERE participant_id = ?').run(p.id);
+  }
+  // Delete participants
+  db.prepare('DELETE FROM participant WHERE session_id = ?').run(session.id);
+
+  // Generate new join code
+  let joinCode;
+  let attempts = 0;
+  do {
+    joinCode = generateJoinCode();
+    attempts++;
+    if (attempts > 100) return res.status(500).json({ error: 'Could not generate unique join code' });
+  } while (db.prepare('SELECT id FROM session WHERE join_code = ?').get(joinCode));
+
+  // Reset session state
+  db.prepare(`
+    UPDATE session 
+    SET status = 'waiting', current_question_index = 0, auto_mode = 0, 
+        question_started_at = NULL, current_phase = 'waiting', join_code = ?
+    WHERE id = ?
+  `).run(joinCode, session.id);
+
+  console.log(`[RESET] Session ${session.id} reset with new join code ${joinCode}`);
+
+  res.json({ ok: true, joinCode });
+});
+
 // List sessions for a quiz
 router.get('/quiz/:adminToken/sessions', (req, res) => {
   const quiz = db.prepare('SELECT * FROM quiz WHERE admin_token = ?').get(req.params.adminToken);

@@ -31,8 +31,14 @@ export default function JoinView() {
       // Check if we already have a participantId for this session (auto-resume)
       const savedPid = localStorage.getItem(`participant:${data.sessionId}`);
       if (savedPid) {
-        navigate(data.status === 'waiting' ? `/lobby/${data.sessionId}` : `/game/${data.sessionId}`);
-        return;
+        // Validate participant still exists (may have been removed by session reset)
+        const check = await fetch(`/api/session/${data.sessionId}/participant/${savedPid}`);
+        if (check.ok) {
+          navigate(data.status === 'waiting' ? `/lobby/${data.sessionId}` : `/game/${data.sessionId}`);
+          return;
+        }
+        // Stale participant — clear and show registration form
+        localStorage.removeItem(`participant:${data.sessionId}`);
       }
       setStep('name');
     } else {

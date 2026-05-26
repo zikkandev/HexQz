@@ -39,6 +39,11 @@ export default function LobbyView() {
       if (data.status === 'finished') navigate(`/results/${sessionId}`);
     });
 
+    socket.on('session:reset', () => {
+      localStorage.removeItem(`participant:${sessionId}`);
+      navigate('/join');
+    });
+
     // Initial state check
     fetch(`/api/session/${sessionId}/current`).then(r => r.json()).then(data => {
       if (data.themeColor) applyTheme(data.themeColor, data.lightMode);
@@ -52,6 +57,7 @@ export default function LobbyView() {
       socket.off('session:get_ready');
       socket.off('session:started');
       socket.off('session:state');
+      socket.off('session:reset');
     };
   }, [sessionId, participantId, navigate]);
 

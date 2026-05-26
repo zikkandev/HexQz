@@ -162,6 +162,7 @@ export default function HostView() {
 
     socket.on('session:correct_answer', (data) => {
       setCurrentPhase('correct_answer');
+      setQuestionStartedAt(null); // Stop the countdown timer
       // Set stats immediately when correct answer is shown
       if (data.question && data.correctAnswers !== undefined) {
         setQuestionStats({
@@ -181,6 +182,27 @@ export default function HostView() {
     socket.on('session:finished', (data) => {
       setFinished(true);
       setScores(data.results);
+    });
+
+    socket.on('session:reset', () => {
+      // Another admin tab triggered reset — sync local state
+      setFinished(false);
+      setStarted(false);
+      setParticipants([]);
+      setScores([]);
+      setCurrentQuestion(null);
+      setQuestionIndex(0);
+      setCurrentPhase(null);
+      setWaitingForContinue(false);
+      setRoundWinner(null);
+      setQuestionStats(null);
+      setTimeRemaining(null);
+      setQuestionStartedAt(null);
+      setAnswerCount({ count: 0, total: 0, answered: [], waiting: [] });
+      // Fetch new join code
+      fetch(`/api/session/${sessionId}/current`).then(r => r.json()).then(data => {
+        if (data.joinCode) setJoinCodeDisplay(data.joinCode);
+      });
     });
 
     socket.on('session:state', (data) => {
@@ -210,6 +232,7 @@ export default function HostView() {
       socket.off('session:answer_count');
       socket.off('session:scores');
       socket.off('session:finished');
+      socket.off('session:reset');
       socket.off('session:state');
       socket.off('session:waiting_for_continue');
       socket.off('session:correct_answer');
@@ -312,6 +335,36 @@ export default function HostView() {
   const joinUrl = typeof window !== 'undefined' ? `${window.location.origin}/join` : '';
   const [joinCodeDisplay, setJoinCodeDisplay] = useState('');
 
+  const resetSession = async () => {
+    if (!confirm('Reset this session? All players will be removed and a new join code will be generated.')) return;
+    try {
+      const res = await fetch(`/api/session/${sessionId}/reset`, {
+        method: 'POST',
+        headers: { 'X-Admin-Token': adminToken }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        // Reset all local state
+        setFinished(false);
+        setStarted(false);
+        setParticipants([]);
+        setScores([]);
+        setCurrentQuestion(null);
+        setQuestionIndex(0);
+        setCurrentPhase(null);
+        setWaitingForContinue(false);
+        setRoundWinner(null);
+        setQuestionStats(null);
+        setTimeRemaining(null);
+        setQuestionStartedAt(null);
+        setAnswerCount({ count: 0, total: 0, answered: [], waiting: [] });
+        if (data.joinCode) setJoinCodeDisplay(data.joinCode);
+      }
+    } catch (e) {
+      console.error('Reset failed:', e);
+    }
+  };
+
   useEffect(() => {
     fetch(`/api/session/${sessionId}/current`).then(r => r.json()).then(data => {
       if (data.joinCode) setJoinCodeDisplay(data.joinCode);
@@ -366,6 +419,12 @@ export default function HostView() {
             onClose={() => { setShowReview(false); setReviewQuestionId(null); }}
           />
         )}
+
+        <div className="mt-8 pt-6 border-t border-gray-700">
+          <button onClick={resetSession} className="w-full py-3 bg-yellow-600 hover:bg-yellow-700 rounded-lg font-semibold transition">
+            🔄 Reset Session (new join code, fresh start)
+          </button>
+        </div>
       </div>
     );
   }

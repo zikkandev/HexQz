@@ -196,6 +196,11 @@ export default function GameView() {
       navigate(`/results/${sessionId}`);
     });
 
+    socket.on('session:reset', () => {
+      localStorage.removeItem(`participant:${sessionId}`);
+      navigate('/join');
+    });
+
     socket.on('session:answer_count', (data) => {
       setLiveCount({ count: data.count, total: data.total });
     });
@@ -213,6 +218,7 @@ export default function GameView() {
       socket.off('session:started');
       socket.off('session:state');
       socket.off('session:finished');
+      socket.off('session:reset');
       socket.off('session:answer_count');
       socket.off('session:scores');
       socket.off('session:correct_answer');

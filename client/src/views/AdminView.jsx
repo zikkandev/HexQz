@@ -33,6 +33,9 @@ export default function AdminView() {
   const [showForm, setShowForm] = useState(false);
   const [showSessionDialog, setShowSessionDialog] = useState(false);
   const [newSessionName, setNewSessionName] = useState('');
+  const [useTimers, setUseTimers] = useState(true);
+  const [sessionAnswerTime, setSessionAnswerTime] = useState(30);
+  const [sessionScoreboardPause, setSessionScoreboardPause] = useState(10);
 
   const loadQuiz = async () => {
     const res = await fetch(`/api/quiz/${adminToken}`);
@@ -54,12 +57,19 @@ export default function AdminView() {
     const res = await fetch(`/api/quiz/${adminToken}/session`, { 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionName: newSessionName.trim() || null })
+      body: JSON.stringify({ 
+        sessionName: newSessionName.trim() || null,
+        useTimers,
+        answerTimeSeconds: useTimers ? sessionAnswerTime : null,
+        scoreboardPauseSeconds: sessionScoreboardPause
+      })
     });
     const data = await res.json();
     if (res.ok) {
       setShowSessionDialog(false);
       setNewSessionName('');
+      setUseTimers(true);
+      setSessionAnswerTime(30);
       navigate(`/host/${data.sessionId}?token=${adminToken}`);
     } else {
       alert('Failed to create session: ' + (data.error || 'Unknown error'));
@@ -89,29 +99,12 @@ export default function AdminView() {
         title: quiz.title, 
         themeColor: quiz.themeColor, 
         lightMode: newMode, 
-        logoUrl: quiz.logoUrl,
-        answerTimeSeconds: quiz.answerTimeSeconds,
-        scoreboardPauseSeconds: quiz.scoreboardPauseSeconds
+        logoUrl: quiz.logoUrl
       })
     });
     setQuiz({ ...quiz, lightMode: newMode });
   };
 
-  const updateTimerSettings = async (answerTime, scoreboardPause) => {
-    await fetch(`/api/quiz/${adminToken}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        title: quiz.title, 
-        themeColor: quiz.themeColor, 
-        lightMode: quiz.lightMode, 
-        logoUrl: quiz.logoUrl,
-        answerTimeSeconds: answerTime,
-        scoreboardPauseSeconds: scoreboardPause
-      })
-    });
-    setQuiz({ ...quiz, answerTimeSeconds: answerTime, scoreboardPauseSeconds: scoreboardPause });
-  };
 
   const deleteSession = async (sessionId) => {
     if (!confirm('Delete this session and all its data?')) return;
@@ -165,26 +158,6 @@ export default function AdminView() {
           >
             {quiz.lightMode ? '☀️ Light' : '🌙 Dark'}
           </button>
-        </div>
-      </div>
-
-      {/* Timer Settings */}
-      <div className="mb-6 p-4 bg-gray-800 rounded-lg border border-gray-700">
-        <h3 className="font-semibold mb-3 text-sm text-gray-400">⏱️ Question Timer</h3>
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">Answer Time (seconds)</label>
-          <input
-            type="number"
-            min="5"
-            max="300"
-            value={quiz.answerTimeSeconds || 30}
-            onChange={(e) => {
-              const val = parseInt(e.target.value) || 30;
-              updateTimerSettings(val, 10);
-            }}
-            className="w-full px-3 py-2 bg-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-accent"
-          />
-          <p className="text-xs text-gray-500 mt-1">Time players have to answer each question</p>
         </div>
       </div>
 
@@ -246,6 +219,11 @@ export default function AdminView() {
                         {s.status === 'active' && (
                           <span className="text-blue-400 text-sm">Q{s.currentQuestionIndex + 1}</span>
                         )}
+                        <span className="text-gray-600 text-xs">
+                          {s.answerTimeSeconds ? `⏱️${s.answerTimeSeconds}s` : '✋ Manual'}
+                          {s.autoMode && ' · Auto'}
+                          {s.scoreboardPauseSeconds && ` · ${s.scoreboardPauseSeconds}s pause`}
+                        </span>
                         <span className="text-accent text-sm opacity-0 group-hover:opacity-100 transition">→ Open Host View</span>
                       </div>
                       <div className="flex gap-3">
@@ -282,6 +260,11 @@ export default function AdminView() {
                         )}
                         <span className="font-mono text-sm">{s.joinCode}</span>
                         <span className="text-gray-500 text-sm">{s.participantCount} players</span>
+                        <span className="text-gray-600 text-xs">
+                          {s.answerTimeSeconds ? `⏱️${s.answerTimeSeconds}s` : '✋ Manual'}
+                          {s.autoMode && ' · Auto'}
+                          {s.scoreboardPauseSeconds && ` · ${s.scoreboardPauseSeconds}s pause`}
+                        </span>
                       </div>
                       <div className="flex gap-3">
                         <button onClick={() => navigate(`/host/${s.id}?token=${adminToken}`)} className="text-sm text-yellow-400 hover:underline">
@@ -324,9 +307,54 @@ export default function AdminView() {
               />
               <p className="text-xs text-gray-500 mt-1">Helps identify sessions when running multiple simultaneously</p>
             </div>
+
+            {/* Timer Settings */}
+            <div className="mb-4 p-4 bg-gray-700/50 rounded-lg">
+              <label className="flex items-center gap-3 cursor-pointer mb-3">
+                <input
+                  type="checkbox"
+                  checked={useTimers}
+                  onChange={(e) => setUseTimers(e.target.checked)}
+                  className="w-5 h-5 rounded accent-accent"
+                />
+                <div>
+                  <span className="font-semibold">⏱️ Use automatic timers</span>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {useTimers ? 'Questions auto-close when time runs out' : 'Host manually closes each question'}
+                  </p>
+                </div>
+              </label>
+              {useTimers && (
+                <div className="ml-8 space-y-3">
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-1">Answer Time (seconds)</label>
+                    <input
+                      type="number"
+                      min="5"
+                      max="300"
+                      value={sessionAnswerTime}
+                      onChange={(e) => setSessionAnswerTime(Math.max(5, Math.min(300, parseInt(e.target.value) || 30)))}
+                      className="w-full px-3 py-2 bg-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-accent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-1">Scoreboard Pause (seconds)</label>
+                    <input
+                      type="number"
+                      min="3"
+                      max="60"
+                      value={sessionScoreboardPause}
+                      onChange={(e) => setSessionScoreboardPause(Math.max(3, Math.min(60, parseInt(e.target.value) || 10)))}
+                      className="w-full px-3 py-2 bg-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-accent"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="flex gap-3">
               <button 
-                onClick={() => { setShowSessionDialog(false); setNewSessionName(''); }}
+                onClick={() => { setShowSessionDialog(false); setNewSessionName(''); setUseTimers(true); setSessionAnswerTime(30); }}
                 className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition"
               >
                 Cancel

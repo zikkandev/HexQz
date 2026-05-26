@@ -39,6 +39,7 @@ services:
     # Usage:
     #   Manual: docker compose --profile testing run --rm stress-test <joinCode> <numPlayers> http://nginx
     #   Auto:   docker compose --profile testing run --rm stress-test --auto <numPlayers> http://nginx
+    #   Parallel: docker compose --profile testing run --rm stress-test node parallel-stress-test.js --auto-advance --base-url http://nginx
 
 networks:
   quiz-network:

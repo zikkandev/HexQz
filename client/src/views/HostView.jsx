@@ -24,7 +24,7 @@ export default function HostView() {
   const [questions, setQuestions] = useState([]);
   const [reviewQuestionId, setReviewQuestionId] = useState(null);
   const [timeRemaining, setTimeRemaining] = useState(null);
-  const [answerTimeSeconds, setAnswerTimeSeconds] = useState(30);
+  const [answerTimeSeconds, setAnswerTimeSeconds] = useState(null);
   const [questionStartedAt, setQuestionStartedAt] = useState(null);
   const [sessionName, setSessionName] = useState('');
   const [waitingForContinue, setWaitingForContinue] = useState(false);
@@ -110,7 +110,7 @@ export default function HostView() {
       setTotalQuestions(data.totalQuestions);
       setAnswerCount({ count: 0, total: 0, answered: [], waiting: [] });
       if (data.questionStartedAt) setQuestionStartedAt(data.questionStartedAt);
-      if (data.answerTimeSeconds) setAnswerTimeSeconds(data.answerTimeSeconds);
+      if (data.answerTimeSeconds !== undefined) setAnswerTimeSeconds(data.answerTimeSeconds);
       setWaitingForContinue(false);
       setCurrentPhase(null);
       setQuestionStats(null);
@@ -135,7 +135,7 @@ export default function HostView() {
       setTotalQuestions(data.totalQuestions);
       setAnswerCount({ count: 0, total: 0, answered: [], waiting: [] });
       if (data.questionStartedAt) setQuestionStartedAt(data.questionStartedAt);
-      if (data.answerTimeSeconds) setAnswerTimeSeconds(data.answerTimeSeconds);
+      if (data.answerTimeSeconds !== undefined) setAnswerTimeSeconds(data.answerTimeSeconds);
       setWaitingForContinue(false);
       setCurrentPhase(null);
       setQuestionStats(null);
@@ -220,7 +220,7 @@ export default function HostView() {
     };
   }, [sessionId, adminToken]);
 
-  // Timer effect for question phase
+  // Timer effect for question phase (only when timed)
   useEffect(() => {
     if (started && !finished && questionStartedAt && answerTimeSeconds && currentQuestion) {
       const interval = setInterval(() => {
@@ -255,6 +255,22 @@ export default function HostView() {
 
   const [continuing, setContinuing] = useState(false);
   const [advancing, setAdvancing] = useState(false);
+  const [closing, setClosing] = useState(false);
+
+  const closeQuestion = async () => {
+    if (closing) return;
+    setClosing(true);
+    try {
+      await fetch(`/api/session/${sessionId}/close-question`, {
+        method: 'POST',
+        headers: { 'X-Admin-Token': adminToken }
+      });
+    } catch (e) {
+      console.error('Close question failed:', e);
+    } finally {
+      setTimeout(() => setClosing(false), 1000);
+    }
+  };
 
   const continueToNext = async () => {
     if (continuing) return;
@@ -494,7 +510,7 @@ export default function HostView() {
           className="w-full px-8 py-4 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-semibold text-xl transition">
           ▶️ Start Quiz
         </button>
-        <p className="text-sm text-gray-400 mt-3 text-center">{participants.length === 0 ? 'Waiting for players to join' : 'You\'ll manually advance between questions'}</p>
+        <p className="text-sm text-gray-400 mt-3 text-center">{participants.length === 0 ? 'Waiting for players to join' : (answerTimeSeconds ? `Timed mode (${answerTimeSeconds}s per question)` : 'Manual mode — you control when to close each question')}</p>
       </div>
     );
   }
@@ -601,6 +617,18 @@ export default function HostView() {
             <div className="text-4xl mb-4 animate-pulse">🎯</div>
             <p className="text-2xl font-bold text-yellow-400">Get Ready!</p>
             <p className="text-gray-400 mt-2">Next question loading...</p>
+          </div>
+        ) : !currentPhase && !waitingForContinue && currentQuestion ? (
+          <div>
+            {!answerTimeSeconds && (
+              <button onClick={closeQuestion} disabled={closing}
+                className="w-full py-3 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-semibold text-lg transition">
+                {closing ? '⏳ Closing...' : '⏹️ Close Question'}
+              </button>
+            )}
+            {!answerTimeSeconds && (
+              <p className="text-sm text-gray-500 text-center mt-2">Manual mode — close when ready to reveal answers</p>
+            )}
           </div>
         ) : waitingForContinue ? (
           <div>

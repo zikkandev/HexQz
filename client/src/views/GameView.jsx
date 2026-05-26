@@ -24,7 +24,7 @@ export default function GameView() {
   const [liveCount, setLiveCount] = useState({ count: 0, total: 0 });
   const [scores, setScores] = useState([]);
   const [timeRemaining, setTimeRemaining] = useState(null);
-  const [answerTimeSeconds, setAnswerTimeSeconds] = useState(30);
+  const [answerTimeSeconds, setAnswerTimeSeconds] = useState(null);
   const [questionStartedAt, setQuestionStartedAt] = useState(null);
   const [roundWinner, setRoundWinner] = useState(null);
   const [questionWinner, setQuestionWinner] = useState(null);
@@ -69,7 +69,7 @@ export default function GameView() {
       if (data.questionStartedAt) {
         setQuestionStartedAt(data.questionStartedAt);
       }
-      if (data.answerTimeSeconds) {
+      if (data.answerTimeSeconds !== undefined) {
         setAnswerTimeSeconds(data.answerTimeSeconds);
       }
     } else if (data.question && questionIndexRef.current === 0 && !question) {
@@ -84,7 +84,7 @@ export default function GameView() {
       if (data.questionStartedAt) {
         setQuestionStartedAt(data.questionStartedAt);
       }
-      if (data.answerTimeSeconds) {
+      if (data.answerTimeSeconds !== undefined) {
         setAnswerTimeSeconds(data.answerTimeSeconds);
       }
     }
@@ -147,7 +147,7 @@ export default function GameView() {
       if (data.questionStartedAt) {
         setQuestionStartedAt(data.questionStartedAt);
       }
-      if (data.answerTimeSeconds) {
+      if (data.answerTimeSeconds !== undefined) {
         setAnswerTimeSeconds(data.answerTimeSeconds);
       }
     });
@@ -163,7 +163,7 @@ export default function GameView() {
       if (data.questionStartedAt) {
         setQuestionStartedAt(data.questionStartedAt);
       }
-      if (data.answerTimeSeconds) {
+      if (data.answerTimeSeconds !== undefined) {
         setAnswerTimeSeconds(data.answerTimeSeconds);
       }
     });

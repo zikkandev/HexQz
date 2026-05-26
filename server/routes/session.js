@@ -82,8 +82,10 @@ router.post('/quiz/:adminToken/session', (req, res) => {
   const quiz = db.prepare('SELECT * FROM quiz WHERE admin_token = ?').get(req.params.adminToken);
   if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
 
-  const { sessionName } = req.body;
+  const { sessionName, useTimers, answerTimeSeconds, scoreboardPauseSeconds } = req.body;
   const name = sessionName?.trim() || null;
+  const answerTime = useTimers ? Math.max(5, Math.min(300, parseInt(answerTimeSeconds) || 30)) : null;
+  const scoreboardPause = Math.max(3, Math.min(60, parseInt(scoreboardPauseSeconds) || 10));
 
   // Generate unique join code (multiple sessions allowed)
   let joinCode;
@@ -96,9 +98,9 @@ router.post('/quiz/:adminToken/session', (req, res) => {
 
   const sessionId = randomUUID();
   db.prepare(`
-    INSERT INTO session (id, quiz_id, join_code, session_name, status, current_question_index)
-    VALUES (?, ?, ?, ?, 'waiting', 0)
-  `).run(sessionId, quiz.id, joinCode, name);
+    INSERT INTO session (id, quiz_id, join_code, session_name, answer_time_seconds, scoreboard_pause_seconds, status, current_question_index)
+    VALUES (?, ?, ?, ?, ?, ?, 'waiting', 0)
+  `).run(sessionId, quiz.id, joinCode, name, answerTime, scoreboardPause);
 
   res.status(201).json({ sessionId, joinCode, sessionName: name });
 });
@@ -157,6 +159,8 @@ router.get('/quiz/:adminToken/sessions', (req, res) => {
       participantCount: s.participant_count,
       createdAt: s.created_at,
       autoMode: !!s.auto_mode,
+      answerTimeSeconds: s.answer_time_seconds,
+      scoreboardPauseSeconds: s.scoreboard_pause_seconds,
       winner
     };
   }));
@@ -196,6 +200,10 @@ router.post('/session/:sessionId/start', (req, res) => {
   const quiz = db.prepare('SELECT * FROM quiz WHERE id = ?').get(session.quiz_id);
   const io = req.app.get('io');
 
+  // Timer settings from session (null = untimed/manual)
+  const answerTimeSecs = session.answer_time_seconds;
+  const scoreboardPauseSecs = session.scoreboard_pause_seconds || 10;
+
   // Clear any stale timeouts from previous runs
   clearAllSessionTimeouts(session.id);
 
@@ -211,11 +219,13 @@ router.post('/session/:sessionId/start', (req, res) => {
     getReadyTimeouts.delete(session.id);
     advanceToNextQuestion(io, session.id, 0, questions, quiz);
     
-    // Schedule auto-close/advance based on mode
-    if (autoModeEnabled) {
-      scheduleAutoAdvance(io, session.id, quiz.answer_time_seconds || 30, quiz.scoreboard_pause_seconds || 10);
-    } else {
-      scheduleAutoClose(io, session.id, quiz.answer_time_seconds || 30, quiz.scoreboard_pause_seconds || 10);
+    // Schedule auto-close/advance based on mode (only if timed)
+    if (answerTimeSecs) {
+      if (autoModeEnabled) {
+        scheduleAutoAdvance(io, session.id, answerTimeSecs, scoreboardPauseSecs);
+      } else {
+        scheduleAutoClose(io, session.id, answerTimeSecs, scoreboardPauseSecs);
+      }
     }
   }, 5000);
   getReadyTimeouts.set(session.id, getReadyId);
@@ -223,7 +233,8 @@ router.post('/session/:sessionId/start', (req, res) => {
   res.json({ 
     questionIndex: 0,
     totalQuestions: questions.length,
-    autoMode: autoModeEnabled 
+    autoMode: autoModeEnabled,
+    answerTimeSeconds: answerTimeSecs
   });
 });
 
@@ -445,8 +456,12 @@ router.post('/session/:sessionId/continue', (req, res) => {
     getReadyTimeouts.delete(session.id);
     advanceToNextQuestion(io, session.id, nextIndex, questions, quiz);
     
-    // Schedule auto-close for this question (manual mode)
-    scheduleAutoClose(io, session.id, quiz.answer_time_seconds || 30, quiz.scoreboard_pause_seconds || 10);
+    // Schedule auto-close for this question only if timed
+    const answerTimeSecs = session.answer_time_seconds;
+    const scoreboardPauseSecs = session.scoreboard_pause_seconds || 10;
+    if (answerTimeSecs) {
+      scheduleAutoClose(io, session.id, answerTimeSecs, scoreboardPauseSecs);
+    }
   }, 5000);
   getReadyTimeouts.set(session.id, getReadyId);
 
@@ -546,12 +561,31 @@ router.post('/session/:sessionId/advance-phase', (req, res) => {
   res.json({ ok: true, phase: session.current_phase });
 });
 
+// Manual close question (for untimed mode)
+router.post('/session/:sessionId/close-question', (req, res) => {
+  const adminToken = req.headers['x-admin-token'];
+  const session = verifyAdminToken(req.params.sessionId, adminToken);
+  if (!session) return res.status(403).json({ error: 'Forbidden' });
+  if (session.status !== 'active') return res.status(400).json({ error: 'Session not active' });
+  if (session.current_phase !== 'question') {
+    return res.json({ ok: true, message: 'Not in question phase' });
+  }
+
+  const io = req.app.get('io');
+  clearAllSessionTimeouts(session.id);
+
+  const scoreboardPauseSecs = session.scoreboard_pause_seconds || 10;
+  executeQuestionClose(io, session.id, scoreboardPauseSecs);
+
+  res.json({ ok: true });
+});
+
 // Get current session state
 router.get('/session/:sessionId/current', (req, res) => {
   const session = db.prepare('SELECT * FROM session WHERE id = ?').get(req.params.sessionId);
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
-  const quiz = db.prepare('SELECT theme_color, light_mode, answer_time_seconds, scoreboard_pause_seconds FROM quiz WHERE id = ?').get(session.quiz_id);
+  const quiz = db.prepare('SELECT theme_color, light_mode FROM quiz WHERE id = ?').get(session.quiz_id);
   const questions = db.prepare(`
     SELECT * FROM question WHERE quiz_id = ? ORDER BY sort_order
   `).all(session.quiz_id);
@@ -559,8 +593,8 @@ router.get('/session/:sessionId/current', (req, res) => {
   const scores = getSessionScores(session.id);
   const themeColor = quiz?.theme_color || null;
   const lightMode = !!quiz?.light_mode;
-  const answerTimeSeconds = quiz?.answer_time_seconds || 30;
-  const scoreboardPauseSeconds = quiz?.scoreboard_pause_seconds || 10;
+  const answerTimeSeconds = session.answer_time_seconds || null;
+  const scoreboardPauseSeconds = session.scoreboard_pause_seconds || 10;
 
   if (session.status === 'waiting') {
     const participants = db.prepare('SELECT * FROM participant WHERE session_id = ?').all(session.id);
@@ -1126,13 +1160,15 @@ function advanceToNextQuestion(io, sessionId, nextIndex, questions, quiz) {
   db.prepare('UPDATE session SET current_question_index = ?, question_started_at = ?, current_phase = ? WHERE id = ?')
     .run(nextIndex, questionStartTime, 'question', sessionId);
 
+  const sessionRow = db.prepare('SELECT answer_time_seconds FROM session WHERE id = ?').get(sessionId);
+
   const payload = {
     question: { id: nextQuestion.id, text: nextQuestion.text, imageUrl: nextQuestion.image_url, type: nextQuestion.type },
     answers: answers.map(a => ({ id: a.id, text: a.text, partLabel: a.part_label || undefined })),
     questionIndex: nextIndex,
     totalQuestions: questions.length,
     questionStartedAt: questionStartTime,
-    answerTimeSeconds: quiz.answer_time_seconds || 30
+    answerTimeSeconds: sessionRow?.answer_time_seconds || null
   };
 
   io.to(`session:${sessionId}`).emit('session:question', payload);

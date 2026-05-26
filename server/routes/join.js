@@ -152,14 +152,21 @@ router.post('/answer', (req, res) => {
   // Determine correctness
   let isCorrect = 0;
   let points = 0;
-  const basePoints = 1000; // Base points for correct answer
+  const isTimed = !!session.answer_time_seconds;
+  const basePoints = isTimed ? 1000 : 1; // Speed-based scoring when timed, 1pt per correct when untimed
+  const speedMaxTime = session.answer_time_seconds || 30;
+
+  // Scoring helper: speed-based when timed, flat 1pt when untimed
+  const awardPoints = (responseTimeMs) => {
+    return isTimed ? calculateSpeedPoints(basePoints, responseTimeMs, speedMaxTime) : 1;
+  };
 
   if (question.type === 'single_choice' || question.type === 'true_false') {
     if (answerId) {
       const answer = db.prepare('SELECT * FROM answer WHERE id = ? AND question_id = ?').get(answerId, questionId);
       if (answer && answer.is_correct) {
         isCorrect = 1;
-        points = calculateSpeedPoints(basePoints, responseTimeMs, quiz.answer_time_seconds);
+        points = awardPoints(responseTimeMs);
       }
     }
   } else if (question.type === 'multiple_choice') {
@@ -171,7 +178,7 @@ router.post('/answer', (req, res) => {
       const selectedSet = new Set(selectedIds);
       if (correctIds.size === selectedSet.size && [...correctIds].every(id => selectedSet.has(id))) {
         isCorrect = 1;
-        points = calculateSpeedPoints(basePoints, responseTimeMs, quiz.answer_time_seconds);
+        points = awardPoints(responseTimeMs);
       }
     }
   } else if (question.type === 'free_text') {
@@ -180,7 +187,7 @@ router.post('/answer', (req, res) => {
       const match = correctAnswers.some(a => a.text.toLowerCase().trim() === textAnswer.toLowerCase().trim());
       if (match) {
         isCorrect = 1;
-        points = calculateSpeedPoints(basePoints, responseTimeMs, quiz.answer_time_seconds);
+        points = awardPoints(responseTimeMs);
       }
     }
   } else if (question.type === 'numeric') {
@@ -188,7 +195,7 @@ router.post('/answer', (req, res) => {
       const num = parseFloat(textAnswer);
       if (!isNaN(num) && Math.abs(num - question.correct_value) <= question.tolerance) {
         isCorrect = 1;
-        points = calculateSpeedPoints(basePoints, responseTimeMs, quiz.answer_time_seconds);
+        points = awardPoints(responseTimeMs);
       }
     }
   }
@@ -217,8 +224,12 @@ router.post('/answer', (req, res) => {
       }
 
       if (totalParts > 0) {
-        const partialMultiplier = matchedParts / totalParts;
-        points = Math.round(calculateSpeedPoints(basePoints, responseTimeMs, quiz.answer_time_seconds) * partialMultiplier);
+        if (isTimed) {
+          const partialMultiplier = matchedParts / totalParts;
+          points = Math.round(calculateSpeedPoints(1000, responseTimeMs, speedMaxTime) * partialMultiplier);
+        } else {
+          points = matchedParts; // 1pt per correct part in untimed mode
+        }
         isCorrect = matchedParts === totalParts ? 1 : 0;
       }
     }
@@ -279,9 +290,8 @@ router.post('/answer', (req, res) => {
   if (answered.length === allParticipants.length && allParticipants.length > 0) {
     console.log(`[EARLY-ADVANCE] All ${allParticipants.length} players answered question ${questionId}, triggering early close`);
     
-    // Get scoreboard pause from quiz settings
-    const quizSettings = db.prepare('SELECT scoreboard_pause_seconds FROM quiz WHERE id = ?').get(quiz.id);
-    const scoreboardPauseSeconds = quizSettings?.scoreboard_pause_seconds || 10;
+    // Get scoreboard pause from session settings
+    const scoreboardPauseSeconds = session.scoreboard_pause_seconds || 10;
     
     // Trigger immediate close (this will cancel any existing timer via the closedQuestions check)
     setImmediate(() => {

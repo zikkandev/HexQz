@@ -17,7 +17,7 @@ export default function DisplayView() {
   const [scores, setScores] = useState([]);
   const [joinCode, setJoinCode] = useState('');
   const [timeRemaining, setTimeRemaining] = useState(null);
-  const [answerTimeSeconds, setAnswerTimeSeconds] = useState(30);
+  const [answerTimeSeconds, setAnswerTimeSeconds] = useState(null);
   const [questionStartedAt, setQuestionStartedAt] = useState(null);
   const [answerCount, setAnswerCount] = useState({ count: 0, total: 0 });
   const [winner, setWinner] = useState(null);
@@ -36,7 +36,7 @@ export default function DisplayView() {
       if (data.sessionName) setSessionName(data.sessionName);
       
       // Set timer settings from quiz configuration
-      if (data.answerTimeSeconds) {
+      if (data.answerTimeSeconds !== undefined) {
         setAnswerTimeSeconds(data.answerTimeSeconds);
       }
       
@@ -82,7 +82,7 @@ export default function DisplayView() {
       if (data.questionStartedAt) {
         setQuestionStartedAt(data.questionStartedAt);
       }
-      if (data.answerTimeSeconds) {
+      if (data.answerTimeSeconds !== undefined) {
         setAnswerTimeSeconds(data.answerTimeSeconds);
       }
     });
@@ -98,7 +98,7 @@ export default function DisplayView() {
       if (data.questionStartedAt) {
         setQuestionStartedAt(data.questionStartedAt);
       }
-      if (data.answerTimeSeconds) {
+      if (data.answerTimeSeconds !== undefined) {
         setAnswerTimeSeconds(data.answerTimeSeconds);
       }
     });

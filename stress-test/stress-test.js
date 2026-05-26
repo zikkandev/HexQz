@@ -336,26 +336,17 @@ async function createTestQuiz() {
     
     console.log(`✅ Added ${questions.length} questions\n`);
     
-    // Update quiz settings to 15 second answer time
-    console.log('⏱️  Setting answer time to 15 seconds...');
-    const updateQuizRes = await fetch(`${BASE_URL}/api/quiz/${adminToken}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: `Stress Test Quiz ${Date.now()}`,
-        answerTimeSeconds: 15
-      })
-    });
-    
-    if (!updateQuizRes.ok) {
-      throw new Error('Failed to update quiz settings');
-    }
-    console.log('✅ Answer time set to 15 seconds\n');
-    
-    // Create session
+    // Create session with 15 second timed mode
+    console.log('⏱️  Creating session with 15 second answer time...');
     const createSessionRes = await fetch(`${BASE_URL}/api/quiz/${adminToken}/session`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionName: 'Stress Test',
+        useTimers: true,
+        answerTimeSeconds: 15,
+        scoreboardPauseSeconds: 5
+      })
     });
     
     if (!createSessionRes.ok) {

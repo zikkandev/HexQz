@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS session (
   status TEXT NOT NULL DEFAULT 'waiting',
   current_question_index INTEGER DEFAULT 0,
   auto_mode INTEGER DEFAULT 0,
+  answer_time_seconds INTEGER,
+  scoreboard_pause_seconds INTEGER DEFAULT 10,
   question_started_at INTEGER,
   current_phase TEXT DEFAULT 'waiting',
   created_at INTEGER DEFAULT (unixepoch())

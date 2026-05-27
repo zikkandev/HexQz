@@ -489,7 +489,9 @@ export default function GameView() {
         )}
         <h2 className="text-2xl font-bold text-center mb-6">Scoreboard</h2>
         <Scoreboard scores={scores} maxVisible={10} />
-        <p className="text-center text-text-secondary mt-6 text-sm">Next question coming up...</p>
+        <p className="text-center text-text-secondary mt-6 text-sm">
+          {questionIndex + 1 >= totalQuestions ? 'Final results coming up...' : 'Next question coming up...'}
+        </p>
       </div>
     );
   }

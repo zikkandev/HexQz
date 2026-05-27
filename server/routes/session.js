@@ -687,11 +687,22 @@ router.get('/session/:sessionId/current', (req, res) => {
 
   const answers = db.prepare('SELECT * FROM answer WHERE question_id = ?').all(currentQuestion.id);
 
+  // Build phase-specific data for restoring display state on reload
+  let roundWinner = null;
+  let correctAnswers = null;
+  if (['round_result', 'correct_answer', 'scoreboard', 'waiting_for_continue'].includes(session.current_phase)) {
+    roundWinner = getRoundWinner(currentQuestion.id, session.id);
+  }
+  if (['correct_answer', 'scoreboard', 'waiting_for_continue'].includes(session.current_phase)) {
+    const correctAns = db.prepare('SELECT * FROM answer WHERE question_id = ? AND is_correct = 1').all(currentQuestion.id);
+    correctAnswers = correctAns.map(a => ({ id: a.id, text: a.text, partLabel: a.part_label || undefined }));
+  }
+
   res.json({
     status: 'active',
     joinCode: session.join_code,
     currentPhase: session.current_phase,
-    question: { id: currentQuestion.id, text: currentQuestion.text, imageUrl: currentQuestion.image_url, type: currentQuestion.type },
+    question: { id: currentQuestion.id, text: currentQuestion.text, imageUrl: currentQuestion.image_url, type: currentQuestion.type, correctValue: currentQuestion.correct_value },
     answers: answers.map(a => ({ id: a.id, text: a.text, partLabel: a.part_label || undefined })),
     questionIndex: session.current_question_index,
     totalQuestions: questions.length,
@@ -702,7 +713,9 @@ router.get('/session/:sessionId/current', (req, res) => {
     questionStartedAt: session.question_started_at,
     getReadyStartedAt: session.current_phase === 'get_ready' ? session.question_started_at : null,
     answerTimeSeconds,
-    scoreboardPauseSeconds
+    scoreboardPauseSeconds,
+    roundWinner,
+    correctAnswers
   });
 });
 

@@ -4,6 +4,22 @@ import { QRCodeSVG } from 'qrcode.react';
 import socket from '../socket.js';
 import Scoreboard from '../components/Scoreboard.jsx';
 
+function MiniQR({ joinCode }) {
+  if (!joinCode) return null;
+  const joinUrl = typeof window !== 'undefined' ? `${window.location.origin}/join` : '';
+  const qrUrl = `${joinUrl}?code=${joinCode}`;
+  return (
+    <div className="fixed bottom-4 left-4 z-50 flex items-center gap-2 bg-black/60 backdrop-blur-sm rounded-xl p-2 border border-white/10">
+      <QRCodeSVG value={qrUrl} size={64} bgColor="transparent" fgColor="white" />
+      <div className="flex flex-col pr-2">
+        <span className="text-[10px] text-white/50 leading-tight">Join at</span>
+        <span className="text-xs font-mono font-bold text-white/80 leading-tight">{window.location.host}/join</span>
+        <span className="text-lg font-bold text-accent leading-tight">{joinCode}</span>
+      </div>
+    </div>
+  );
+}
+
 // Display mode for showing on a screen/projector during quiz
 export default function DisplayView() {
   const { sessionId } = useParams();
@@ -44,23 +60,35 @@ export default function DisplayView() {
       if (data.status === 'waiting') {
         setPhase('waiting');
       } else if (data.status === 'active') {
-        // Restore phase from server if available
-        if (data.currentPhase) {
-          setPhase(data.currentPhase === 'round_result' ? 'roundResult' : 
-                   data.currentPhase === 'correct_answer' ? 'correctAnswer' : 
-                   data.currentPhase);
-        } else if (data.question) {
-          setPhase('question');
-        }
-        
         if (data.question) {
           setQuestion(data.question);
           setQuestionIndex(data.questionIndex);
           setTotalQuestions(data.totalQuestions);
+          setAnswers(data.answers || []);
           
           if (data.questionStartedAt) {
             setQuestionStartedAt(data.questionStartedAt);
           }
+        }
+
+        // Restore phase-specific data
+        if (data.roundWinner) setRoundWinner(data.roundWinner);
+        if (data.correctAnswers) {
+          setCorrectAnswers(data.correctAnswers);
+          setCorrectAnswerQuestion(data.question);
+        }
+
+        // Restore phase from server
+        if (data.currentPhase) {
+          const phaseMap = {
+            round_result: 'roundResult',
+            correct_answer: 'correctAnswer',
+            waiting_for_continue: 'scoreboard',
+            get_ready: 'getReady',
+          };
+          setPhase(phaseMap[data.currentPhase] || data.currentPhase);
+        } else if (data.question) {
+          setPhase('question');
         }
       } else if (data.status === 'finished') {
         setPhase('finished');
@@ -280,6 +308,7 @@ export default function DisplayView() {
   if (phase === 'question' && question) {
     return (
       <div className="flex flex-col min-h-screen p-8 bg-gradient-to-br from-bg via-bg-secondary to-bg">
+        <MiniQR joinCode={joinCode} />
         <a 
           href={`/host/${sessionId}?token=${adminToken}`}
           className="absolute top-4 right-4 px-3 py-1.5 bg-gray-800/80 hover:bg-gray-700 rounded-lg text-xs font-semibold transition border border-gray-700 opacity-50 hover:opacity-100"
@@ -354,6 +383,7 @@ export default function DisplayView() {
   if (phase === 'correctAnswer' && correctAnswerQuestion) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-gradient-to-br from-bg via-bg-secondary to-bg">
+        <MiniQR joinCode={joinCode} />
         <div className="text-8xl mb-6 animate-pulse">✅</div>
         <h1 className="text-6xl font-bold mb-8 text-center text-green-400">Correct Answer!</h1>
         
@@ -405,6 +435,7 @@ export default function DisplayView() {
   if (phase === 'roundResult' && roundWinner) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-gradient-to-br from-bg via-bg-secondary to-bg">
+        <MiniQR joinCode={joinCode} />
         <div className="text-8xl mb-6 animate-bounce">⚡</div>
         <h1 className="text-6xl font-bold mb-4 text-center animate-pulse text-accent">Fastest Answer!</h1>
         <div className="bg-bg-card/50 backdrop-blur-sm border-2 border-accent rounded-2xl p-12 mt-8 shadow-2xl">
@@ -432,6 +463,7 @@ export default function DisplayView() {
   if (phase === 'scoreboard') {
     return (
       <div className="flex flex-col min-h-screen p-8 bg-gradient-to-br from-bg via-bg-secondary to-bg justify-center">
+        <MiniQR joinCode={joinCode} />
         {/* Question Winner - Top Scorer */}
         {questionWinner && (
           <div className="mb-6 text-center">
@@ -459,6 +491,7 @@ export default function DisplayView() {
   if (phase === 'getReady') {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-gradient-to-br from-bg via-bg-secondary to-bg">
+        <MiniQR joinCode={joinCode} />
         <h1 className="text-7xl font-bold mb-12 text-center animate-pulse">Get Ready!</h1>
         {getReadyCountdown !== null && getReadyCountdown > 0 && (
           <div className="relative">
@@ -478,6 +511,7 @@ export default function DisplayView() {
   if (phase === 'finished') {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-gradient-to-br from-bg via-bg-secondary to-bg">
+        <MiniQR joinCode={joinCode} />
         <div className="text-8xl mb-6 animate-bounce">🏆</div>
         <h1 className="text-6xl font-bold mb-4 text-center animate-pulse">Quiz Complete!</h1>
         {winner && (

@@ -27,6 +27,7 @@ export default function DisplayView() {
   const [sessionName, setSessionName] = useState('');
   const [correctAnswers, setCorrectAnswers] = useState([]);
   const [correctAnswerQuestion, setCorrectAnswerQuestion] = useState(null);
+  const [answers, setAnswers] = useState([]);
 
   useEffect(() => {
     // Load initial state
@@ -78,6 +79,7 @@ export default function DisplayView() {
       setQuestion(data.question);
       setQuestionIndex(data.questionIndex);
       setTotalQuestions(data.totalQuestions);
+      setAnswers(data.answers || []);
       
       if (data.questionStartedAt) {
         setQuestionStartedAt(data.questionStartedAt);
@@ -93,7 +95,8 @@ export default function DisplayView() {
       setQuestionIndex(data.questionIndex);
       setTotalQuestions(data.totalQuestions);
       setAnswerCount({ count: 0, total: 0 });
-      setRoundWinner(null); // Clear previous round winner
+      setRoundWinner(null);
+      setAnswers(data.answers || []); // Clear previous round winner
       
       if (data.questionStartedAt) {
         setQuestionStartedAt(data.questionStartedAt);
@@ -326,7 +329,21 @@ export default function DisplayView() {
         <div className="flex-1 flex flex-col justify-center">
           <h2 className="text-5xl font-bold text-center mb-6">{question.text}</h2>
           {question.imageUrl && (
-            <img src={question.imageUrl} alt="" className="max-h-96 mx-auto rounded-lg shadow-2xl" />
+            <img src={question.imageUrl} alt="" className="max-h-96 mx-auto rounded-lg shadow-2xl mb-6" />
+          )}
+          {answers.length > 0 && (question.type === 'single_choice' || question.type === 'multiple_choice' || question.type === 'true_false') && (
+            <div className="grid grid-cols-2 gap-4 max-w-4xl mx-auto w-full mt-4">
+              {answers.map((a, idx) => {
+                const colors = ['bg-red-600/30 border-red-500', 'bg-blue-600/30 border-blue-500', 'bg-yellow-600/30 border-yellow-500', 'bg-green-600/30 border-green-500', 'bg-purple-600/30 border-purple-500', 'bg-pink-600/30 border-pink-500'];
+                const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+                return (
+                  <div key={a.id} className={`${colors[idx % colors.length]} border-2 rounded-xl p-5 flex items-center gap-4`}>
+                    <span className="text-2xl font-bold text-white/60 w-10">{letters[idx]}</span>
+                    <span className="text-2xl font-semibold text-white">{a.text}</span>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       </div>

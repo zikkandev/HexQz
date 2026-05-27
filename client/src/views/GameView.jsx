@@ -6,6 +6,57 @@ import Scoreboard from '../components/Scoreboard.jsx';
 
 const POLL_INTERVAL = 8000;
 
+const CANDY = ['🍬', '🍭', '🍫', '🧁', '🍪', '🎉', '🍩', '🍰', '⭐', '🌟'];
+
+function CandyFireworks() {
+  const [particles, setParticles] = useState([]);
+  
+  useEffect(() => {
+    const items = [];
+    for (let i = 0; i < 40; i++) {
+      items.push({
+        id: i,
+        emoji: CANDY[Math.floor(Math.random() * CANDY.length)],
+        left: Math.random() * 100,
+        delay: Math.random() * 1.5,
+        duration: 2 + Math.random() * 2,
+        size: 1.5 + Math.random() * 1.5,
+        drift: -30 + Math.random() * 60,
+      });
+    }
+    setParticles(items);
+  }, []);
+
+  return (
+    <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+      {particles.map(p => (
+        <div
+          key={p.id}
+          className="absolute animate-candy-fall"
+          style={{
+            left: `${p.left}%`,
+            fontSize: `${p.size}rem`,
+            animationDelay: `${p.delay}s`,
+            animationDuration: `${p.duration}s`,
+            '--drift': `${p.drift}px`,
+          }}
+        >
+          {p.emoji}
+        </div>
+      ))}
+      <style>{`
+        @keyframes candy-fall {
+          0% { top: -10%; opacity: 1; transform: translateX(0) rotate(0deg); }
+          100% { top: 110%; opacity: 0; transform: translateX(var(--drift)) rotate(720deg); }
+        }
+        .animate-candy-fall {
+          animation: candy-fall var(--duration, 3s) ease-in forwards;
+        }
+      `}</style>
+    </div>
+  );
+}
+
 export default function GameView() {
   const { sessionId } = useParams();
   const navigate = useNavigate();
@@ -235,7 +286,6 @@ export default function GameView() {
       const timeout = setTimeout(() => {
         setGetReadyCountdown(prev => Math.max(0, prev - 1));
       }, 1000);
-      
       return () => clearTimeout(timeout);
     }
   }, [phase, getReadyCountdown]);
@@ -287,19 +337,64 @@ export default function GameView() {
             <span className="text-7xl font-bold text-accent">{getReadyCountdown}</span>
           </div>
         )}
-        {getReadyCountdown === 0 && (
-          <div className="text-5xl font-bold text-green-400 animate-bounce">GO!</div>
-        )}
       </div>
     );
   }
 
   // Correct Answer Reveal phase
   if (phase === 'correctAnswer' && correctAnswerQuestion) {
+    // Determine if the player got it right
+    const correctIds = new Set(correctAnswers.map(a => a.id));
+    const correctTexts = correctAnswers.map(a => a.text?.toLowerCase().trim());
+    let playerWasCorrect = null; // null = didn't answer
+
+    if (submitted) {
+      const qType = correctAnswerQuestion.type;
+      if (qType === 'single_choice' || qType === 'true_false') {
+        playerWasCorrect = correctIds.has(selectedAnswer);
+      } else if (qType === 'multiple_choice') {
+        const sel = Array.isArray(selectedAnswer) ? selectedAnswer : [selectedAnswer];
+        playerWasCorrect = sel.length === correctIds.size && sel.every(id => correctIds.has(id));
+      } else if (qType === 'free_text') {
+        playerWasCorrect = correctTexts.includes(textAnswer?.toLowerCase().trim());
+      } else if (qType === 'numeric') {
+        const num = parseFloat(textAnswer);
+        playerWasCorrect = !isNaN(num) && correctAnswerQuestion.correctValue != null &&
+          Math.abs(num - correctAnswerQuestion.correctValue) <= (correctAnswerQuestion.tolerance || 0);
+      } else if (qType === 'multi_part') {
+        // Check per-part matches
+        try {
+          const parts = typeof multiPartAnswers === 'object' ? multiPartAnswers : {};
+          const partGroups = {};
+          for (const a of correctAnswers) {
+            if (!a.partLabel) continue;
+            if (!partGroups[a.partLabel]) partGroups[a.partLabel] = [];
+            partGroups[a.partLabel].push(a.text?.toLowerCase().trim());
+          }
+          const totalParts = Object.keys(partGroups).length;
+          let matched = 0;
+          for (const [label, accepted] of Object.entries(partGroups)) {
+            const userAns = (parts[label] || '').toLowerCase().trim();
+            if (userAns && accepted.includes(userAns)) matched++;
+          }
+          playerWasCorrect = totalParts > 0 && matched === totalParts;
+        } catch { playerWasCorrect = false; }
+      } else if (qType === 'estimation') {
+        playerWasCorrect = null; // Estimation is scored differently
+      }
+    }
+
+    const resultEmoji = playerWasCorrect === null ? '🤔' : playerWasCorrect ? '🎉' : '😬';
+    const resultText = playerWasCorrect === null
+      ? (submitted ? 'Scored later' : "You didn't answer")
+      : playerWasCorrect ? 'You got it right!' : 'Not this time';
+    const resultColor = playerWasCorrect === null ? 'text-yellow-400' : playerWasCorrect ? 'text-green-400' : 'text-red-400';
+
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
-        <div className="text-6xl mb-4 animate-pulse">✅</div>
-        <h1 className="text-3xl font-bold mb-6 text-center text-green-400">Correct Answer!</h1>
+        <div className="text-6xl mb-2">{resultEmoji}</div>
+        <h2 className={`text-2xl font-bold mb-4 text-center ${resultColor}`}>{resultText}</h2>
+        <h3 className="text-lg font-semibold mb-4 text-center text-gray-400">The correct answer was:</h3>
         
         <div className="bg-bg-card border-2 border-green-500 rounded-xl p-6 shadow-xl w-full max-w-md">
           <h2 className="text-lg font-semibold mb-4 text-center text-text-secondary">{correctAnswerQuestion.text}</h2>
@@ -347,10 +442,14 @@ export default function GameView() {
 
   // Round Result phase
   if (phase === 'roundResult' && roundWinner) {
+    const isMe = roundWinner.participantId === participantId;
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen p-4">
-        <div className="text-6xl mb-4 animate-bounce">⚡</div>
-        <h1 className="text-4xl font-bold mb-3 text-center animate-pulse text-accent">Fastest Answer!</h1>
+      <div className="flex flex-col items-center justify-center min-h-screen p-4 relative overflow-hidden">
+        {isMe && <CandyFireworks />}
+        <div className="text-6xl mb-4 animate-bounce">{isMe ? '🍬' : '⚡'}</div>
+        <h1 className={`text-4xl font-bold mb-3 text-center animate-pulse ${isMe ? 'text-yellow-400' : 'text-accent'}`}>
+          {isMe ? 'You were the fastest! 🎉' : 'Fastest Answer!'}
+        </h1>
         <div className="bg-bg-card border-2 border-accent rounded-xl p-6 mt-4 shadow-xl">
           <h2 className="text-3xl font-bold mb-2 text-center">{roundWinner.name}</h2>
           {roundWinner.team && (

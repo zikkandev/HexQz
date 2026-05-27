@@ -254,8 +254,11 @@ router.post('/session/:sessionId/start', (req, res) => {
   clearAllSessionTimeouts(session.id);
 
   // Show "Get Ready" screen
+  const getReadyStartedAt = Math.floor(Date.now() / 1000);
+  db.prepare('UPDATE session SET current_phase = ?, question_started_at = ? WHERE id = ?').run('get_ready', getReadyStartedAt, session.id);
   io.to(`session:${session.id}`).emit('session:get_ready', { 
     countdown: 5,
+    getReadyStartedAt,
     nextQuestionIndex: 0,
     totalQuestions: questions.length
   });
@@ -399,8 +402,10 @@ router.post('/session/:sessionId/next', (req, res) => {
           // Update phase to waiting_for_continue
           db.prepare('UPDATE session SET current_phase = ? WHERE id = ?').run('waiting_for_continue', session.id);
           
+          const nextQuestion = questions[nextIndex];
           io.to(`session:${session.id}`).emit('session:waiting_for_continue', { 
             nextIndex,
+            nextQuestion: nextQuestion ? { text: nextQuestion.text, type: nextQuestion.type, imageUrl: nextQuestion.image_url } : null,
             questionStats: {
               question: {
                 text: currentQuestion.text,
@@ -490,9 +495,11 @@ router.post('/session/:sessionId/continue', (req, res) => {
   }
   
   // Show "Get Ready" screen
-  db.prepare('UPDATE session SET current_phase = ? WHERE id = ?').run('get_ready', session.id);
+  const getReadyStartedAt = Math.floor(Date.now() / 1000);
+  db.prepare('UPDATE session SET current_phase = ?, question_started_at = ? WHERE id = ?').run('get_ready', getReadyStartedAt, session.id);
   io.to(`session:${session.id}`).emit('session:get_ready', { 
     countdown: 5,
+    getReadyStartedAt,
     nextQuestionIndex: nextIndex,
     totalQuestions: questions.length
   });
@@ -572,36 +579,26 @@ router.post('/session/:sessionId/advance-phase', (req, res) => {
       return res.json({ ok: true, phase: 'finished' });
     }
     
-    // Advance to waiting_for_continue
-    const correctAnswers = db.prepare('SELECT * FROM answer WHERE question_id = ? AND is_correct = 1').all(currentQuestion.id);
-    const totalResponses = db.prepare(`
-      SELECT COUNT(*) as count FROM response r
-      JOIN participant p ON p.id = r.participant_id
-      WHERE r.question_id = ? AND p.session_id = ?
-    `).get(currentQuestion.id, session.id);
-    const correctResponses = db.prepare(`
-      SELECT COUNT(*) as count FROM response r
-      JOIN participant p ON p.id = r.participant_id
-      WHERE r.question_id = ? AND p.session_id = ? AND r.is_correct = 1
-    `).get(currentQuestion.id, session.id);
-    
-    db.prepare('UPDATE session SET current_phase = ? WHERE id = ?').run('waiting_for_continue', session.id);
-    io.to(`session:${session.id}`).emit('session:waiting_for_continue', { 
-      nextIndex,
-      questionStats: {
-        question: {
-          text: currentQuestion.text,
-          type: currentQuestion.type,
-          correctValue: currentQuestion.correct_value
-        },
-        correctAnswers: correctAnswers.map(a => ({
-          text: a.text,
-          partLabel: a.part_label
-        })),
-        correctCount: correctResponses?.count || 0,
-        totalCount: totalResponses?.count || 0
-      }
+    // Go directly to next question (Get Ready → Question)
+    const getReadyStartedAt = Math.floor(Date.now() / 1000);
+    db.prepare('UPDATE session SET current_phase = ?, question_started_at = ? WHERE id = ?').run('get_ready', getReadyStartedAt, session.id);
+    io.to(`session:${session.id}`).emit('session:get_ready', { 
+      countdown: 5,
+      getReadyStartedAt,
+      nextQuestionIndex: nextIndex,
+      totalQuestions: questions.length
     });
+    
+    const getReadyId = setTimeout(() => {
+      getReadyTimeouts.delete(session.id);
+      advanceToNextQuestion(io, session.id, nextIndex, questions, quiz);
+      const answerTimeSecs = session.answer_time_seconds;
+      const scoreboardPauseSecs = session.scoreboard_pause_seconds || 10;
+      if (answerTimeSecs) {
+        scheduleAutoClose(io, session.id, answerTimeSecs, scoreboardPauseSecs);
+      }
+    }, 5000);
+    getReadyTimeouts.set(session.id, getReadyId);
   }
 
   res.json({ ok: true, phase: session.current_phase });
@@ -703,6 +700,7 @@ router.get('/session/:sessionId/current', (req, res) => {
     autoMode: !!session.auto_mode,
     scores,
     questionStartedAt: session.question_started_at,
+    getReadyStartedAt: session.current_phase === 'get_ready' ? session.question_started_at : null,
     answerTimeSeconds,
     scoreboardPauseSeconds
   });
@@ -837,7 +835,7 @@ function getSessionScores(sessionId) {
 function getRoundWinner(questionId, sessionId) {
   // Get the fastest correct answer for this question IN THIS SESSION
   const winner = db.prepare(`
-    SELECT p.display_name, p.team_name, r.points_awarded, r.response_time_ms
+    SELECT p.id as participant_id, p.display_name, p.team_name, r.points_awarded, r.response_time_ms
     FROM response r
     JOIN participant p ON p.id = r.participant_id
     WHERE r.question_id = ? 
@@ -853,6 +851,7 @@ function getRoundWinner(questionId, sessionId) {
   if (!winner || !winner.response_time_ms) return null;
 
   return {
+    participantId: winner.participant_id,
     name: winner.display_name,
     team: winner.team_name,
     points: winner.points_awarded,
@@ -1064,8 +1063,10 @@ function executeQuestionClose(io, sessionId, scoreboardPauseSeconds) {
             // Update phase to waiting_for_continue
             db.prepare('UPDATE session SET current_phase = ? WHERE id = ?').run('waiting_for_continue', sessionId);
             
+            const nextQuestionObj = questions[nextIndex];
             io.to(`session:${sessionId}`).emit('session:waiting_for_continue', { 
               nextIndex,
+              nextQuestion: nextQuestionObj ? { text: nextQuestionObj.text, type: nextQuestionObj.type, imageUrl: nextQuestionObj.image_url } : null,
               questionStats: {
                 question: {
                   text: currentQuestion.text,
@@ -1161,9 +1162,11 @@ function scheduleAutoAdvance(io, sessionId, answerTimeSeconds, scoreboardPauseSe
         if (!updatedSession || updatedSession.status !== 'active' || !updatedSession.auto_mode) return;
         
         // Show "Get Ready" screen
-        db.prepare('UPDATE session SET current_phase = ? WHERE id = ?').run('get_ready', sessionId);
+        const getReadyStartedAt = Math.floor(Date.now() / 1000);
+        db.prepare('UPDATE session SET current_phase = ?, question_started_at = ? WHERE id = ?').run('get_ready', getReadyStartedAt, sessionId);
         io.to(`session:${sessionId}`).emit('session:get_ready', { 
           countdown: 5,
+          getReadyStartedAt,
           nextQuestionIndex: nextIndex,
           totalQuestions: questions.length
         });

@@ -31,6 +31,7 @@ export default function HostView() {
   const [currentPhase, setCurrentPhase] = useState(null);
   const [questionStats, setQuestionStats] = useState(null);
   const [roundWinner, setRoundWinner] = useState(null);
+  const [nextQuestion, setNextQuestion] = useState(null);
 
   useEffect(() => {
     // Load initial state
@@ -115,6 +116,7 @@ export default function HostView() {
       setCurrentPhase(null);
       setQuestionStats(null);
       setRoundWinner(null);
+      setNextQuestion(null);
     });
 
     socket.on('session:get_ready', (data) => {
@@ -140,6 +142,7 @@ export default function HostView() {
       setCurrentPhase(null);
       setQuestionStats(null);
       setRoundWinner(null);
+      setNextQuestion(null);
     });
 
     socket.on('session:answer_count', (data) => {
@@ -153,8 +156,8 @@ export default function HostView() {
 
     socket.on('session:waiting_for_continue', (data) => {
       setWaitingForContinue(true);
-      setQuestionIndex(data.nextIndex);
       setCurrentPhase(null);
+      if (data.nextQuestion) setNextQuestion(data.nextQuestion);
       if (data.questionStats) {
         setQuestionStats(data.questionStats);
       }
@@ -753,8 +756,15 @@ export default function HostView() {
                 </div>
               )}
             </div>
+            {nextQuestion && (
+              <div className="bg-blue-900/30 border border-blue-500/50 rounded-xl p-4 mb-4">
+                <p className="text-xs text-blue-400 font-semibold mb-1 uppercase tracking-wide">Up Next — Question {questionIndex + 2} of {totalQuestions}</p>
+                <p className="text-lg font-bold text-white">{nextQuestion.text}</p>
+                <span className="text-xs text-blue-300 mt-1 inline-block">{nextQuestion.type?.replace('_', ' ')}</span>
+              </div>
+            )}
             <button onClick={continueToNext} disabled={continuing} className="w-full py-3 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-semibold text-lg transition">
-              {continuing ? '⏳ Loading...' : '▶️ Continue to Next Question'}
+              {continuing ? '⏳ Loading...' : (questionIndex + 1 >= totalQuestions ? '🏆 Show Final Results' : '▶️ Show Next Question')}
             </button>
           </div>
         ) : currentPhase && currentPhase !== 'get_ready' ? (
@@ -832,7 +842,7 @@ export default function HostView() {
             <button onClick={advancePhase} disabled={advancing} className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-semibold text-lg transition">
               {currentPhase === 'correct_answer' && '⏩ Skip to Round Winner'}
               {currentPhase === 'round_result' && '⏩ Skip to Scoreboard'}
-              {currentPhase === 'scoreboard' && '⏩ Skip to Continue Button'}
+              {currentPhase === 'scoreboard' && (questionIndex + 1 >= totalQuestions ? '🏆 Show Final Results' : '▶️ Show Next Question')}
             </button>
           </div>
         ) : null}
